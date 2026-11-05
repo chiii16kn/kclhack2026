@@ -2,11 +2,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-const LINE_HEADER = {
-  "Content-Type": "application/json",
-  Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`,
-};
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -250,12 +245,35 @@ export async function POST(req: Request) {
 }
 
 async function replyLine(replyToken: string, messageText: string) {
-  await fetch("https://api.line.me/v2/bot/message/reply", {
-    method: "POST",
-    headers: LINE_HEADER,
-    body: JSON.stringify({
-      replyToken: replyToken,
-      messages: [{ type: "text", text: messageText }],
-    }),
-  });
+  const channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  if (!channelAccessToken) {
+    console.error("LINE_CHANNEL_ACCESS_TOKEN is not configured");
+    return;
+  }
+
+  let response: Response;
+  try {
+    response = await fetch("https://api.line.me/v2/bot/message/reply", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${channelAccessToken}`,
+      },
+      body: JSON.stringify({
+        replyToken: replyToken,
+        messages: [{ type: "text", text: messageText }],
+      }),
+    });
+  } catch (error) {
+    console.error("LINE reply request failed:", error);
+    return;
+  }
+
+  if (!response.ok) {
+    const responseBody = await response.text();
+    console.error("LINE reply API error:", {
+      status: response.status,
+      body: responseBody.slice(0, 1000),
+    });
+  }
 }
