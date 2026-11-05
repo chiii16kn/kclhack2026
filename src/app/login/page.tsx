@@ -3,6 +3,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -121,6 +122,13 @@ export default function LoginPage() {
             {isLoading ? "処理中..." : "メールでログイン"}
           </button>
         </form>
+
+        <Link
+          href="/signup"
+          className="block w-full py-3.5 border-2 border-orange-200 text-orange-600 hover:bg-orange-50 rounded-full font-bold text-center transition-colors"
+        >
+          新規ユーザー登録
+        </Link>
 
         {/* 区切り線 */}
         <div className="relative flex items-center py-2">
