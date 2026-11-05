@@ -138,7 +138,7 @@ export async function POST(req: Request) {
 
         // 5. カテゴリの検索 (▼ c: { name: string } 型定義を追加 ▼)
         let category = user.categories.find(
-          (c) => c.name.toLowerCase() === categoryName.toLowerCase()
+          (c: { name: string }) => c.name.toLowerCase() === categoryName.toLowerCase()
         );
 
         if (!category) {
