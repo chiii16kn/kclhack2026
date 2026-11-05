@@ -8,8 +8,8 @@ import { revalidatePath } from "next/cache";
 // ① 赤字の袋を補填する処理
 export async function resolveDeficit(
   input: any,
-  argYearMonth?: string,
-  argAmount?: number
+  arg2?: number | string,
+  arg3?: string | number
 ) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -19,7 +19,7 @@ export async function resolveDeficit(
   let yearMonth = "";
   let amountToCover = 0;
 
-  // 引数の形式（FormData / オブジェクト / 文字列）に応じて値を抽出
+  // 引数の形式に応じた抽出
   if (input instanceof FormData) {
     categoryId = (input.get("categoryId") as string) || "";
     yearMonth = (input.get("yearMonth") as string) || "";
@@ -32,11 +32,17 @@ export async function resolveDeficit(
     categoryId = input;
   }
 
-  if (argYearMonth && typeof argYearMonth === "string") {
-    yearMonth = argYearMonth;
+  // 第2引数・第3引数の型判定
+  if (typeof arg2 === "number") {
+    amountToCover = arg2;
+  } else if (typeof arg2 === "string") {
+    yearMonth = arg2;
   }
-  if (argAmount && typeof argAmount === "number") {
-    amountToCover = argAmount;
+
+  if (typeof arg3 === "string") {
+    yearMonth = arg3;
+  } else if (typeof arg3 === "number") {
+    amountToCover = arg3;
   }
 
   // 年月が空の場合は当月を自動設定
@@ -45,7 +51,6 @@ export async function resolveDeficit(
     yearMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
   }
 
-  // categoryId が正しく取得できていない場合は処理を安全に中断
   if (!categoryId || typeof categoryId !== "string") {
     return;
   }
@@ -100,8 +105,8 @@ export async function resolveDeficit(
 // ② 未配分プールから指定の袋に予算を追加する処理
 export async function quickAllocate(
   input: any,
-  argYearMonth?: string,
-  argAmount?: number
+  arg2?: number | string,
+  arg3?: string | number
 ) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -123,11 +128,16 @@ export async function quickAllocate(
     categoryId = input;
   }
 
-  if (argYearMonth && typeof argYearMonth === "string") {
-    yearMonth = argYearMonth;
+  if (typeof arg2 === "number") {
+    amountToAdd = arg2;
+  } else if (typeof arg2 === "string") {
+    yearMonth = arg2;
   }
-  if (argAmount && typeof argAmount === "number") {
-    amountToAdd = argAmount;
+
+  if (typeof arg3 === "string") {
+    yearMonth = arg3;
+  } else if (typeof arg3 === "number") {
+    amountToAdd = arg3;
   }
 
   const today = new Date();
