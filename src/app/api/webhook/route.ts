@@ -157,7 +157,7 @@ export async function POST(req: Request) {
           },
         });
 
-        // 7. 今月の残額 & 1日あたりの残枠計算
+        // 7. 今月の残額 & 1日/1回あたりの残枠計算
         const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
         const remainingDays = Math.max(1, lastDay - today.getDate() + 1);
 
@@ -176,24 +176,33 @@ export async function POST(req: Request) {
             type: "EXPENSE",
             date: {
               gte: new Date(today.getFullYear(), today.getMonth(), 1),
-              lte: new Date(today.getFullYear(), today.getMonth() + 1, 0),
+              lt: new Date(today.getFullYear(), today.getMonth() + 1, 1),
             },
           },
         });
 
         const catExpense = transactions.reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
         const remainingBudget = catBudget - catExpense;
+        const isCountMode = category.countType !== "DAILY" && category.countType !== "DAY";
+        const countTarget = category.countValue > 0 ? category.countValue : 1;
+        const usedCount = category.mergeSameDay
+          ? new Set(transactions.map((transaction) => new Date(transaction.date).getDate())).size
+          : transactions.length;
+        const remainingCount = Math.max(1, countTarget - usedCount);
+        const remainingUnits = isCountMode ? remainingCount : remainingDays;
 
         const dailyAvailable =
           !category.isFixed && remainingBudget > 0
-            ? Math.floor(remainingBudget / remainingDays)
+            ? Math.floor(remainingBudget / remainingUnits)
             : 0;
 
         // 8. 返信メッセージの生成
         let responseMsg = `📝 【${category.name}】に ¥${amount.toLocaleString()} を記録しました！\n\n📁 カテゴリ今月残額: ¥${remainingBudget.toLocaleString()}\n`;
 
         if (!category.isFixed) {
-          responseMsg += `🗓️ 今日以降1日使える額: ¥${dailyAvailable.toLocaleString()} /日 (残り${remainingDays}日)`;
+          const unitLabel = isCountMode ? "1回" : "1日";
+          const remainingLabel = isCountMode ? "回" : "日";
+          responseMsg += `🗓️ 今日以降${unitLabel}使える額: ¥${dailyAvailable.toLocaleString()} /${unitLabel} (残り${remainingUnits}${remainingLabel})`;
         }
 
         // 予算オーバー時の処理分岐
