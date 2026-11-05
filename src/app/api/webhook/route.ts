@@ -1,4 +1,4 @@
-// src/app/api/line/webhook/route.ts
+// src/app/api/webhook/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
@@ -72,7 +72,6 @@ export async function POST(req: Request) {
         );
 
         if (isIncome) {
-          // 収入データ更新（既存の当月収入があれば加算、無ければ新規作成）
           const currentIncome = await prisma.monthlyIncome.findFirst({
             where: {
               userId: user.id,
@@ -102,7 +101,7 @@ export async function POST(req: Request) {
           continue;
         }
 
-        // 4. 口座の確認 (無ければ自動生成)
+        // 4. 口座の確認
         let account = user.accounts[0];
         if (!account) {
           account = await prisma.account.create({
@@ -110,9 +109,9 @@ export async function POST(req: Request) {
           });
         }
 
-        // 5. カテゴリの検索 (無ければ作成)
+        // 5. カテゴリの検索 (▼ c: { name: string } 型定義を追加 ▼)
         let category = user.categories.find(
-          (c) => c.name.toLowerCase() === categoryName.toLowerCase()
+          (c: { name: string }) => c.name.toLowerCase() === categoryName.toLowerCase()
         );
 
         if (!category) {
@@ -160,7 +159,7 @@ export async function POST(req: Request) {
           },
         });
 
-        const catExpense = transactions.reduce((sum, t) => sum + t.amount, 0);
+        const catExpense = transactions.reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
         const remainingBudget = catBudget - catExpense;
 
         const dailyAvailable =
@@ -200,7 +199,7 @@ export async function POST(req: Request) {
                   },
                 },
               });
-              const rem = (bData?.amount ?? 0) - bTrans.reduce((sum, t) => sum + t.amount, 0);
+              const rem = (bData?.amount ?? 0) - bTrans.reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
               if (rem > 0) {
                 candidateText += `\n・${otherCat.name} (残額: ¥${rem.toLocaleString()})`;
               }
