@@ -1,15 +1,17 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { getSupabaseEnvironment } from "./env";
 
 // リクエストのたびにセッショントークンを検証・更新します。
 export async function updateSession(request: NextRequest) {
+  const { url, publishableKey } = getSupabaseEnvironment();
   let supabaseResponse = NextResponse.next({
     request,
   });
 
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    url,
+    publishableKey,
     {
       cookies: {
         getAll() {

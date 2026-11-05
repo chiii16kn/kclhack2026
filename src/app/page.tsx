@@ -7,6 +7,7 @@ import { updateOverBudgetMode } from "@/app/actions/user";
 import { addTransaction } from "@/app/actions/transaction";
 import ActionRequiredModal from "@/components/ActionRequiredModal";
 import CategorySettingsButton from "@/components/CategorySettingsButton";
+import type { Prisma } from "@prisma/client";
 
 const getCategoryIcon = (name: string) => {
   if (name.includes("食")) return "🍔";
@@ -16,6 +17,32 @@ const getCategoryIcon = (name: string) => {
   if (name.includes("交通") || name.includes("車")) return "🚃";
   return "🍎";
 };
+
+function getDashboardUserInclude(yearMonth: string, today: Date) {
+  return {
+    accounts: true,
+    incomes: { where: { yearMonth } },
+    categories: {
+      include: {
+        budgets: { where: { yearMonth } },
+        transactions: {
+          where: {
+            type: "EXPENSE",
+            date: {
+              gte: new Date(today.getFullYear(), today.getMonth(), 1),
+              lt: new Date(today.getFullYear(), today.getMonth() + 1, 1),
+            },
+          },
+        },
+      },
+    },
+  } satisfies Prisma.UserInclude;
+}
+
+type DashboardUserData = Prisma.UserGetPayload<{
+  include: ReturnType<typeof getDashboardUserInclude>;
+}>;
+type DashboardCategory = DashboardUserData["categories"][number];
 
 export default async function Home() {
   const supabase = await createClient();
@@ -39,26 +66,9 @@ export default async function Home() {
   const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
   const remainingDays = Math.max(1, lastDayOfMonth - today.getDate() + 1);
 
-  const userData = await prisma.user.findUnique({
+  const userData: DashboardUserData | null = await prisma.user.findUnique({
     where: { id: user.id },
-    include: {
-      accounts: true,
-      incomes: { where: { yearMonth: currentYearMonth } },
-      categories: {
-        include: {
-          budgets: { where: { yearMonth: currentYearMonth } },
-          transactions: {
-            where: {
-              type: "EXPENSE",
-              date: {
-                gte: new Date(today.getFullYear(), today.getMonth(), 1),
-                lt: new Date(today.getFullYear(), today.getMonth() + 1, 1),
-              },
-            },
-          },
-        },
-      },
-    },
+    include: getDashboardUserInclude(currentYearMonth, today),
   });
 
   if (!userData) return <div>データの読み込みに失敗しました。</div>;
@@ -66,14 +76,15 @@ export default async function Home() {
   const totalIncome = userData.incomes[0]?.amount ?? 0;
 
   const totalAllocated = userData.categories.reduce(
-    (sum, cat) => sum + (cat.budgets[0]?.amount ?? 0),
+    (sum: number, cat: DashboardCategory) => sum + (cat.budgets[0]?.amount ?? 0),
     0
   );
 
   const unallocatedAmount = totalIncome - totalAllocated;
 
   const totalExpense = userData.categories.reduce(
-    (sum, cat) => sum + cat.transactions.reduce((tSum, t) => tSum + t.amount, 0),
+    (sum: number, cat: DashboardCategory) =>
+      sum + cat.transactions.reduce((tSum, t) => tSum + t.amount, 0),
     0
   );
 

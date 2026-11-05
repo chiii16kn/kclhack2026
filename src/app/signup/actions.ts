@@ -25,35 +25,39 @@ export async function signup(formData: FormData) {
 
   // ③ Supabase側で認証ユーザーが作られたら、Prisma（家計簿データベース）側にもデータを登録する
   if (data.user) {
-    try {
-      // prisma.user.create で新しいユーザーデータを作成
-      await prisma.user.create({
-        data: {
-          id: data.user.id, // SupabaseのユーザーIDと同じIDをセットして紐付ける
-          email: data.user.email!,
-          
-          // accounts: { create: [...] } で、ユーザー作成と同時に初期の「口座」を作る
-          accounts: {
-            create: [
-              { name: "現金 (財布)" },
-              { name: "メインバンク" },
-            ],
-          },
+    if (data.user.email) {
+      try {
+        // prisma.user.create で新しいユーザーデータを作成
+        await prisma.user.create({
+          data: {
+            id: data.user.id, // SupabaseのユーザーIDと同じIDをセットして紐付ける
+            email: data.user.email,
 
-          // categories: { create: [...] } で、ユーザー作成と同時に初期の「カテゴリ(袋)」を作る
-          categories: {
-            create: [
-              { name: "食費", isFixed: false },
-              { name: "日用品", isFixed: false },
-              { name: "交際費", isFixed: false },
-              { name: "家賃", isFixed: true }, // 固定費フラグを立てておく
-            ],
+            // accounts: { create: [...] } で、ユーザー作成と同時に初期の「口座」を作る
+            accounts: {
+              create: [
+                { name: "現金 (財布)" },
+                { name: "メインバンク" },
+              ],
+            },
+
+            // categories: { create: [...] } で、ユーザー作成と同時に初期の「カテゴリ(袋)」を作る
+            categories: {
+              create: [
+                { name: "食費", isFixed: false },
+                { name: "日用品", isFixed: false },
+                { name: "交際費", isFixed: false },
+                { name: "家賃", isFixed: true }, // 固定費フラグを立てておく
+              ],
+            },
           },
-        },
-      });
-    } catch (e) {
-      console.error("Prismaユーザー作成エラー:", e);
-      // 万が一DBエラーが起きてもとりあえず処理は進める
+        });
+      } catch (e) {
+        console.error("Prismaユーザー作成エラー:", e);
+        // 万が一DBエラーが起きてもとりあえず処理は進める
+      }
+    } else {
+      console.error("Prismaユーザー作成エラー:", new Error("Supabase user email is missing"));
     }
   }
 

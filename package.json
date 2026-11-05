@@ -4,9 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "prisma generate",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "pretypecheck": "prisma generate",
     "typecheck": "tsc --noEmit",
     "check": "npm run lint && npm run typecheck && npm run build"
   },

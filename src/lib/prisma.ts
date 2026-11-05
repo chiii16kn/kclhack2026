@@ -3,10 +3,12 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 
+declare global {
+  var prisma: PrismaClient | undefined;
+}
+
 // Next.jsの再読み込みで重複してDB接続が作られないようグローバル領域に保持します
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined;
-};
+const globalForPrisma = globalThis;
 
 // ① PostgreSQL への接続プール（通信の口）を作成します
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });

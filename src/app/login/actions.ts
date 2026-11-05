@@ -3,22 +3,22 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getFormDataString } from "@/lib/form-data";
 
 export async function login(formData: FormData) {
   const supabase = await createClient();
 
-  // TODO(Auth): formData から email と password を取得しましょう
- const email = String(formData.get("email"));
-const password = String(formData.get("password"));
+  const email = getFormDataString(formData, "email");
+  const password = getFormDataString(formData, "password");
 
-const { error } = await supabase.auth.signInWithPassword({
-  email,
-  password,
-});
+  const { error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
 
-if (error) {
-  redirect("/login?error=invalid");
-}
+  if (error) {
+    redirect("/login?error=invalid");
+  }
 
   revalidatePath("/", "layout");
   redirect("/");
