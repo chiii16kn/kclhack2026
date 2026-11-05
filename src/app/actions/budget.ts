@@ -3,6 +3,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
+import { getFormDataString } from "@/lib/form-data";
 import { revalidatePath } from "next/cache";
 
 // ① 今月の総収入（利用可能総額）を保存・更新するアクション
@@ -11,7 +12,7 @@ export async function updateMonthlyIncome(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
 
-  const yearMonth = formData.get("yearMonth") as string;
+  const yearMonth = getFormDataString(formData, "yearMonth");
   const amount = Number(formData.get("amount") || 0);
 
   if (!yearMonth) return;
@@ -40,8 +41,8 @@ export async function updateCategoryBudget(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
 
-  const categoryId = formData.get("categoryId") as string;
-  const yearMonth = formData.get("yearMonth") as string;
+  const categoryId = getFormDataString(formData, "categoryId");
+  const yearMonth = getFormDataString(formData, "yearMonth");
   const amount = Number(formData.get("amount") || 0);
 
   if (!categoryId || !yearMonth) return;

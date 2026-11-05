@@ -66,14 +66,14 @@ export default async function Home() {
   const totalIncome = userData.incomes[0]?.amount ?? 0;
 
   const totalAllocated = userData.categories.reduce(
-    (sum: number, cat: any) => sum + (cat.budgets[0]?.amount ?? 0),
+    (sum, cat) => sum + (cat.budgets[0]?.amount ?? 0),
     0
   );
 
   const unallocatedAmount = totalIncome - totalAllocated;
 
   const totalExpense = userData.categories.reduce(
-    (sum: number, cat: any) => sum + cat.transactions.reduce((tSum: number, t: any) => tSum + t.amount, 0),
+    (sum, cat) => sum + cat.transactions.reduce((tSum, t) => tSum + t.amount, 0),
     0
   );
 

@@ -1,11 +1,26 @@
 // src/components/ActionRequiredModal.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { resolveDeficit, quickAllocate } from "@/app/actions/resolve";
 
 type Category = { id: string; name: string; remaining: number };
 type SimpleCategory = { id: string; name: string };
+
+function AllocateAmountInput({ amount }: { amount: number }) {
+  const [allocateAmount, setAllocateAmount] = useState(amount);
+
+  return (
+    <input
+      type="number"
+      name="amount"
+      value={allocateAmount}
+      onChange={(event) => setAllocateAmount(Number(event.target.value))}
+      className="w-24 px-3 py-2.5 border-2 border-gray-100 rounded-xl text-sm text-right font-bold bg-gray-50 focus:outline-none focus:border-orange-200"
+      required
+    />
+  );
+}
 
 export default function ActionRequiredModal({
   unallocatedAmount,
@@ -20,14 +35,6 @@ export default function ActionRequiredModal({
 }) {
   const [isOpen, setIsOpen] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
-  
-  // 入力欄の金額を管理する状態
-  const [allocateAmount, setAllocateAmount] = useState(unallocatedAmount);
-
-  // 残額（unallocatedAmount）が変化したら、入力欄の数字も自動で合わせる
-  useEffect(() => {
-    setAllocateAmount(unallocatedAmount);
-  }, [unallocatedAmount]);
 
   if (!isOpen) return null;
 
@@ -99,14 +106,7 @@ export default function ActionRequiredModal({
                     <option value="">どの袋に入れる？</option>
                     {allCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
-                  <input 
-                    type="number" 
-                    name="amount" 
-                    value={allocateAmount}
-                    onChange={(e) => setAllocateAmount(Number(e.target.value))}
-                    className="w-24 px-3 py-2.5 border-2 border-gray-100 rounded-xl text-sm text-right font-bold bg-gray-50 focus:outline-none focus:border-orange-200" 
-                    required 
-                  />
+                  <AllocateAmountInput key={unallocatedAmount} amount={unallocatedAmount} />
                 </div>
                 <button type="submit" disabled={isProcessing} className="w-full py-2.5 bg-orange-400 text-white rounded-xl text-sm font-bold hover:bg-orange-500 transition active:scale-95 disabled:opacity-50">
                   この袋に入れる！

@@ -3,6 +3,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
+import { getFormDataString } from "@/lib/form-data";
 import { revalidatePath } from "next/cache";
 
 export async function updateCategorySettings(formData: FormData) {
@@ -10,8 +11,8 @@ export async function updateCategorySettings(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
 
-  const categoryId = formData.get("categoryId") as string;
-  const countType = formData.get("countType") as string;
+  const categoryId = getFormDataString(formData, "categoryId");
+  const countType = getFormDataString(formData, "countType");
   const countValue = Number(formData.get("countValue"));
   const mergeSameDay = formData.get("mergeSameDay") === "true";
 

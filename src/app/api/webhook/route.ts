@@ -7,15 +7,42 @@ const LINE_HEADER = {
   Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`,
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isUnknownArray(value: unknown): value is unknown[] {
+  return Array.isArray(value);
+}
+
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    const rawBody: unknown = await req.json();
+    if (!isRecord(rawBody)) {
+      throw new TypeError("Invalid LINE webhook payload");
+    }
+    const body = rawBody;
     const events = body.events || [];
+    if (!isUnknownArray(events)) {
+      throw new TypeError("Invalid LINE webhook events");
+    }
 
-    for (const event of events) {
-      if (event.type === "message" && event.message.type === "text") {
+    for (const rawEvent of events) {
+      if (!isRecord(rawEvent)) {
+        throw new TypeError("Invalid LINE webhook event");
+      }
+      const event = rawEvent;
+      if (event.type === "message") {
+        if (!isRecord(event.message)) {
+          throw new TypeError("Invalid LINE webhook message");
+        }
+        const message = event.message;
+        if (message.type !== "text") continue;
+        if (typeof event.replyToken !== "string" || typeof message.text !== "string") {
+          throw new TypeError("Invalid LINE text message");
+        }
         const replyToken = event.replyToken;
-        const text: string = event.message.text.trim();
+        const text = message.text.trim();
 
         // 1. テキスト解析 (例: "食費 1200", "収入 50000")
         const parts = text.split(/[\s ]+/);
@@ -111,7 +138,7 @@ export async function POST(req: Request) {
 
         // 5. カテゴリの検索 (▼ c: { name: string } 型定義を追加 ▼)
         let category = user.categories.find(
-          (c: { name: string }) => c.name.toLowerCase() === categoryName.toLowerCase()
+          (c) => c.name.toLowerCase() === categoryName.toLowerCase()
         );
 
         if (!category) {

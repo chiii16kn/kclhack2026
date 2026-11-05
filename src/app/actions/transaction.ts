@@ -3,6 +3,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
+import { getFormDataString } from "@/lib/form-data";
 import { revalidatePath } from "next/cache";
 
 export async function addTransaction(formData: FormData) {
@@ -13,9 +14,9 @@ export async function addTransaction(formData: FormData) {
   const targetUserId = user?.id || (await prisma.user.findFirst())?.id;
   if (!targetUserId) return;
 
-  const categoryId = formData.get("categoryId") as string;
+  const categoryId = getFormDataString(formData, "categoryId");
   const amount = Number(formData.get("amount"));
-  const memo = formData.get("memo") as string || "Web手動登録";
+  const memo = getFormDataString(formData, "memo") || "Web手動登録";
 
   if (!categoryId || isNaN(amount) || amount <= 0) return;
 

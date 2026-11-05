@@ -5,11 +5,12 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma"; // Prismaを使ってDBを操作するためのツール
+import { getFormDataString } from "@/lib/form-data";
 
 export async function signup(formData: FormData) {
   // ① 画面の入力フォームからメールアドレスとパスワードを受け取る
-  const email = formData.get("email") as string;
-  const password = formData.get("password") as string;
+  const email = getFormDataString(formData, "email");
+  const password = getFormDataString(formData, "password");
 
   // ② Supabaseの認証機能を使ってユーザーを作成する
   const supabase = await createClient();

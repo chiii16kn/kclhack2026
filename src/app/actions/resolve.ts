@@ -3,11 +3,20 @@
 
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
+import { getFormDataString } from "@/lib/form-data";
 import { revalidatePath } from "next/cache";
+
+type ResolveInput = {
+  categoryId?: unknown;
+  id?: unknown;
+  yearMonth?: unknown;
+  amount?: unknown;
+  remaining?: unknown;
+};
 
 // ① 赤字の袋を補填する処理
 export async function resolveDeficit(
-  input: any,
+  input: FormData | ResolveInput | string,
   arg2?: number | string,
   arg3?: string | number
 ) {
@@ -21,13 +30,14 @@ export async function resolveDeficit(
 
   // 引数の形式に応じた抽出
   if (input instanceof FormData) {
-    categoryId = (input.get("categoryId") as string) || "";
-    yearMonth = (input.get("yearMonth") as string) || "";
+    categoryId = getFormDataString(input, "categoryId");
+    yearMonth = getFormDataString(input, "yearMonth");
     amountToCover = Number(input.get("amount") || 0);
   } else if (typeof input === "object" && input !== null) {
-    categoryId = input.categoryId || input.id || "";
-    yearMonth = input.yearMonth || "";
-    amountToCover = Number(input.amount || Math.abs(input.remaining || 0));
+    const inputCategoryId = input.categoryId || input.id || "";
+    categoryId = typeof inputCategoryId === "string" ? inputCategoryId : "";
+    yearMonth = typeof input.yearMonth === "string" ? input.yearMonth : "";
+    amountToCover = Number(input.amount || Math.abs(Number(input.remaining || 0)));
   } else if (typeof input === "string") {
     categoryId = input;
   }
@@ -105,7 +115,7 @@ export async function resolveDeficit(
 
 // ② 未配分プールから指定の袋に予算を追加する処理
 export async function quickAllocate(
-  input: any,
+  input: FormData | ResolveInput | string,
   arg2?: number | string,
   arg3?: string | number
 ) {
@@ -118,12 +128,13 @@ export async function quickAllocate(
   let amountToAdd = 0;
 
   if (input instanceof FormData) {
-    categoryId = (input.get("categoryId") as string) || "";
-    yearMonth = (input.get("yearMonth") as string) || "";
+    categoryId = getFormDataString(input, "categoryId");
+    yearMonth = getFormDataString(input, "yearMonth");
     amountToAdd = Number(input.get("amount") || 0);
   } else if (typeof input === "object" && input !== null) {
-    categoryId = input.categoryId || input.id || "";
-    yearMonth = input.yearMonth || "";
+    const inputCategoryId = input.categoryId || input.id || "";
+    categoryId = typeof inputCategoryId === "string" ? inputCategoryId : "";
+    yearMonth = typeof input.yearMonth === "string" ? input.yearMonth : "";
     amountToAdd = Number(input.amount || 0);
   } else if (typeof input === "string") {
     categoryId = input;
