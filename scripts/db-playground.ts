@@ -17,7 +17,7 @@ async function main() {
   // 2. 条件を付けて取得: 3000円以下の商品
   // TODO(DB): price が 3000 以下の商品を where で絞り込みましょう
   const cheapProducts = await prisma.product.findMany({
-    where: { /* ここに条件を記述 */ },
+    where: { price: {lte: 3000 } },
   });
   console.log("--- 3000円以下の商品 ---");
   console.log(
@@ -34,7 +34,8 @@ async function main() {
   // 4. 並び替え: 評価の高い順に3件
   // TODO(DB): rating の降順で並び替え、take でratingの値が大きい3件を絞りましょう
   const topRated = await prisma.product.findMany({
-    // ここに条件を記述
+    orderBy: { rating: "desc" },
+    take: 3,
   });
   console.log("--- 評価の高い商品トップ3 ---");
   console.log(

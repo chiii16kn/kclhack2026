@@ -8,15 +8,17 @@ export async function login(formData: FormData) {
   const supabase = await createClient();
 
   // TODO(Auth): formData から email と password を取得しましょう
-  const email = "";
-  const password = "";
+ const email = String(formData.get("email"));
+const password = String(formData.get("password"));
 
-  // TODO(Auth): signInWithPassword でログインし、結果の error を取得しましょう
-  const error = null;
+const { error } = await supabase.auth.signInWithPassword({
+  email,
+  password,
+});
 
-  if (error) {
-    // TODO(Auth): /login?error=invalid にリダイレクトしましょう
-  }
+if (error) {
+  redirect("/login?error=invalid");
+}
 
   revalidatePath("/", "layout");
   redirect("/");

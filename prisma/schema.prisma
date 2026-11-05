@@ -1,32 +1,87 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
 }
 
-model Product {
-  id   String @id
-  name String
-  // TODO(DB): 残りのフィールドを定義しましょう
-  // ここにフィールドの定義を追加します
+// ① ユーザーモデル
+model User {
+  id             String          @id @default(uuid())
+  email          String          @unique
+  overBudgetMode String          @default("COMPENSATE") // "COMPENSATE" (補填モード) または "WARNING" (マイナス強調モード)
+  accounts       Account[]
+  categories     Category[]
+  transactions   Transaction[]
+  budgets        MonthlyBudget[]
+  incomes        MonthlyIncome[]
 }
 
-model CartItem {
-  id        String @id @default(cuid())
+// ② 月次収入モデル（今月の利用可能総額プール）
+model MonthlyIncome {
+  id        String   @id @default(uuid())
   userId    String
-  productId String
-  quantity  Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  yearMonth String   // 例: "2026-10"
+  amount    Int      // 今月の総収入・利用可能額
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  @@unique([userId, productId])
+  @@unique([userId, yearMonth])
 }
 
-model Favorite {
-  id        String @id @default(cuid())
-  userId    String
-  productId String
+// ③ 口座モデル
+model Account {
+  id           String        @id @default(uuid())
+  userId       String
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  transactions Transaction[]
+}
 
-  @@unique([userId, productId])
+// ④ カテゴリモデル（袋）
+model Category {
+  id           String          @id @default(cuid())
+  userId       String
+  name         String
+  isFixed      Boolean         @default(false)
+  icon         String          @default("👛")
+  
+  // --- 今回追加する設定項目 ---
+  countType    String          @default("DAILY")   // "DAILY" (日数割) または "MONTHLY_COUNT" (月回数割)
+  countValue   Int             @default(30)        // ひと月の目標回数など
+  mergeSameDay Boolean         @default(false)     // 同日の複数回支出を1回としてまとめるか
+
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  budgets      MonthlyBudget[]
+  transactions Transaction[]
+}
+
+// ⑤ 月次予算モデル（各カテゴリへの割り当て額）
+model MonthlyBudget {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  yearMonth  String   // 例: "2026-10"
+  amount     Int      // 配分された予算額
+
+  @@unique([categoryId, yearMonth]) // upsertに必要なユニーク制約
+}
+
+// ⑥ 取引モデル
+model Transaction {
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type       String    // "INCOME" または "EXPENSE"
+  amount     Int
+  date       DateTime  @default(now())
+  memo       String?
+  accountId  String
+  account    Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 }
