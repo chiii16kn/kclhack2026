@@ -70,7 +70,8 @@ export async function resolveDeficit(
         },
       },
     });
-    const totalExpense = transactions.reduce((sum, t) => sum + t.amount, 0);
+    // ▼ sum に : number の型を追加して型エラーを回避 ▼
+    const totalExpense = transactions.reduce((sum: number, t) => sum + t.amount, 0);
     const budgetAmount = budget?.amount ?? 0;
     if (totalExpense > budgetAmount) {
       amountToCover = totalExpense - budgetAmount;
