@@ -33,6 +33,18 @@ export default function LineLinkOtp({ isLinked }: { isLinked: boolean }) {
       setOtp({ code: result.code, expiresAt });
       setRemainingSeconds(Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)));
     } catch (error: unknown) {
+      try {
+        const accountIsLinked = await isLineAccountLinked();
+        if (accountIsLinked) {
+          setLinked(true);
+          setOtp(null);
+          setRemainingSeconds(0);
+          return;
+        }
+      } catch (statusError: unknown) {
+        setErrorMessage(getErrorMessage(statusError));
+        return;
+      }
       setErrorMessage(getErrorMessage(error));
     } finally {
       setIsIssuing(false);

@@ -103,7 +103,7 @@ export default async function Home() {
   }).filter(cat => cat.remaining < 0);
 
   // モーダルを表示するかどうかの判定
-  const needsAction = unallocatedAmount !== 0 || overCategories.length > 0;
+  const needsAction = unallocatedAmount > 0 || overCategories.length > 0;
 
   // モーダル用に追加：全カテゴリの簡易リスト
   const allCategories = userData.categories.map(c => ({ id: c.id, name: c.name }));

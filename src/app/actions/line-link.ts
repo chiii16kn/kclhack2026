@@ -47,9 +47,12 @@ export async function issueLineLinkOtp(): Promise<{
 
   const account = await prisma.user.findUnique({
     where: { id: user.id },
-    select: { id: true },
+    select: { id: true, lineId: true },
   });
   if (!account) throw new Error("家計簿アカウントが見つかりません。");
+  if (account.lineId) {
+    throw new Error("このアカウントはすでにLINE連携済みです。");
+  }
 
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
