@@ -1,68 +1,26 @@
-# KCL☆Hack 2026 バックエンドハンズオン
+# Pocke — 家計簿アプリ
 
-## 環境構築
+Next.js、TypeScript、Supabase、PostgreSQL、Prismaを使った、WebとLINEから記録できる家計簿アプリです。
 
-### リポジトリの取得とインストール関係
+## はじめに
+
+- [プロジェクト完全ガイド](./PROJECT_GUIDE.md)：技術用語、構成、各ファイルの役割、Web／LINEの処理の流れ、起動・環境設定を説明しています。
+- [Prismaのデータベース設計](./prisma/schema.prisma)
+- [環境変数の名前と設定例](./.env.example)（実際の秘密値はここに書かず、`.env.local` などに設定してください）
+
+## ローカルで起動する
 
 ```bash
-git clone -b develop git@github.com:Kyutech-Code-Lab/kclhack2026-backend-hands-on.git
-cd kclhack2026-backend-hands-on
 npm ci
-```
-
-### Supabaseプロジェクトの作成
-
-- Supabaseダッシュボードにて New Project を選択
-- プロジェクト名とパスワードを入力
-- Regionで `Northeast Asia (Tokyo)` を選択
-- Securityで`Enable Data API`のチェックを外す
-- Securityで`Enable automatic RLS`のチェックを外す
-
-### 環境変数の設定
-
-```bash
-cp .env.example .env
-```
-
-作成したプロジェクトを開き、`Connect`を選択。
-環境変数は次の場所にある。
-- `DATABASE_URL`: ORM → Prisma → Configure ORM
-- `DIRECT_URL`: ORM → Prisma → Configure ORM
-- `NEXT_PUBLIC_SUPABASE_URL`: Framework → Next.js → App Router → Add files
-- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`: Framework → Next.js → App Router → Add files
-
-`[YOUR-PASSWORD]`はプロジェクト作成時に設定したパスワードにする。
-
-### Prismaクライアントの作成
-
-```bash
-npx prisma generate
-```
-
-### テーブルの作成と初期データの投入
-
-```bash
-npx prisma db push
-npx prisma db seed
-```
-
-Prismaのスキーマを変更した場合は、接続先のデータベースに対して `npx prisma db push` を実行してからアプリをデプロイしてください。
-
-### Authenticationの確認
-Authentication → URL Configuration → Site URL が `http://localhost:3000`を指していることを確認する
-
-### 起動
-
-```bash
 npm run dev
 ```
 
-ブラウザで次のURLを開く
+`.env.local` にSupabase、PostgreSQL、LINE Messaging APIの環境変数を設定してから、`http://localhost:3000` を開いてください。変数の一覧と用途は[プロジェクト完全ガイド](./PROJECT_GUIDE.md#環境変数)を参照してください。
 
-```text
-http://localhost:3000
+よく使う確認コマンド:
+
+```bash
+npm run lint
+npm run typecheck
+npm run build
 ```
-
-### LINEアカウント連携
-
-ログイン後、ホーム画面の「LINEアカウント連携」に表示された6桁のコードをLINEボットへ5分以内に送信してください。期限切れの場合は、画面からコードを再発行できます。Webhookを利用するには、LINE DevelopersのMessaging APIチャネルにあるChannel access tokenとChannel secretを、それぞれ `LINE_CHANNEL_ACCESS_TOKEN` と `LINE_CHANNEL_SECRET` として環境変数に設定してください。
