@@ -46,6 +46,8 @@ npx prisma db push
 npx prisma db seed
 ```
 
+Prismaのスキーマを変更した場合は、接続先のデータベースに対して `npx prisma db push` を実行してからアプリをデプロイしてください。
+
 ### Authenticationの確認
 Authentication → URL Configuration → Site URL が `http://localhost:3000`を指していることを確認する
 
@@ -60,3 +62,7 @@ npm run dev
 ```text
 http://localhost:3000
 ```
+
+### LINEアカウント連携
+
+ログイン後、ホーム画面の「LINEアカウント連携」に表示された6桁のコードをLINEボットへ15分以内に送信してください。期限切れの場合は、画面からコードを再発行できます。Webhookを利用するには、LINE DevelopersのMessaging APIチャネルにあるChannel access tokenとChannel secretを、それぞれ `LINE_CHANNEL_ACCESS_TOKEN` と `LINE_CHANNEL_SECRET` として環境変数に設定してください。

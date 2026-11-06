@@ -7,6 +7,7 @@ import { updateOverBudgetMode } from "@/app/actions/user";
 import { addTransaction } from "@/app/actions/transaction";
 import ActionRequiredModal from "@/components/ActionRequiredModal";
 import CategorySettingsButton from "@/components/CategorySettingsButton";
+import LineLinkOtp from "@/components/LineLinkOtp";
 import type { Prisma } from "@prisma/client";
 
 const getCategoryIcon = (name: string) => {
@@ -120,6 +121,8 @@ export default async function Home() {
       )}
 
       <div className="max-w-3xl mx-auto p-4 space-y-6 pt-6">
+
+        <LineLinkOtp isLinked={Boolean(userData.lineId)} />
 
         {/* ヘッダー & 未配分プール */}
         <div className="bg-white p-6 rounded-3xl shadow-sm border-2 border-orange-100 space-y-5">
