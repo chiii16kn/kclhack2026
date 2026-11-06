@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   isLineAccountLinked,
   issueLineLinkOtp,
+  unlinkLineAccount,
 } from "@/app/actions/line-link";
 
 type IssuedOtp = {
@@ -16,16 +17,18 @@ function getErrorMessage(error: unknown): string {
 }
 
 export default function LineLinkOtp({ isLinked }: { isLinked: boolean }) {
-  const [linked, setLinked] = useState(false);
-  const accountLinked = isLinked || linked;
+  const [linked, setLinked] = useState(isLinked);
   const [otp, setOtp] = useState<IssuedOtp | null>(null);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [isIssuing, setIsIssuing] = useState(false);
+  const [isUnlinking, setIsUnlinking] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   const issueCode = useCallback(async () => {
     setIsIssuing(true);
     setErrorMessage(null);
+    setStatusMessage(null);
 
     try {
       const result = await issueLineLinkOtp();
@@ -51,6 +54,28 @@ export default function LineLinkOtp({ isLinked }: { isLinked: boolean }) {
     }
   }, []);
 
+  const unlinkAccount = useCallback(async () => {
+    setIsUnlinking(true);
+    setErrorMessage(null);
+    setStatusMessage(null);
+
+    try {
+      const result = await unlinkLineAccount();
+      setLinked(false);
+      setOtp(null);
+      setRemainingSeconds(0);
+      setStatusMessage(
+        result.notificationSent
+          ? "LINEに連携解除の通知を送信しました。"
+          : "連携を解除しましたが、LINEへの通知は送信できませんでした。",
+      );
+    } catch (error: unknown) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setIsUnlinking(false);
+    }
+  }, []);
+
   useEffect(() => {
     let isActive = true;
     void (async () => {
@@ -70,7 +95,7 @@ export default function LineLinkOtp({ isLinked }: { isLinked: boolean }) {
   }, [isLinked, issueCode]);
 
   useEffect(() => {
-    if (accountLinked) return;
+    if (linked) return;
 
     let isActive = true;
     const intervalId = window.setInterval(() => {
@@ -91,7 +116,7 @@ export default function LineLinkOtp({ isLinked }: { isLinked: boolean }) {
       isActive = false;
       window.clearInterval(intervalId);
     };
-  }, [accountLinked]);
+  }, [linked]);
 
   useEffect(() => {
     if (!otp) return;
@@ -108,13 +133,27 @@ export default function LineLinkOtp({ isLinked }: { isLinked: boolean }) {
   const seconds = remainingSeconds % 60;
   const isExpired = remainingSeconds === 0;
 
-  if (accountLinked) {
+  if (linked) {
     return (
-      <section className="rounded-3xl border-2 border-green-100 bg-white p-5 shadow-sm">
-        <h2 className="font-extrabold text-gray-800">LINEアカウント連携済み</h2>
-        <p className="mt-1 text-sm text-gray-500">
-          LINEアカウントとの連携が完了しています。
-        </p>
+      <section className="rounded-3xl border-2 border-green-100 bg-white p-5 shadow-sm space-y-3">
+        <div>
+          <h2 className="font-extrabold text-gray-800">LINEアカウント連携済み</h2>
+          <p className="mt-1 text-sm text-gray-500">LINEアカウントとの連携が完了しています。</p>
+        </div>
+        {errorMessage ? (
+          <p className="text-sm font-bold text-rose-600" role="alert">{errorMessage}</p>
+        ) : null}
+        {statusMessage ? (
+          <p className="text-sm font-bold text-teal-700" role="status">{statusMessage}</p>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => void unlinkAccount()}
+          disabled={isUnlinking}
+          className="w-full rounded-full border-2 border-rose-200 px-4 py-3 font-bold text-rose-600 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {isUnlinking ? "解除中..." : "LINE連携を解除"}
+        </button>
       </section>
     );
   }
@@ -150,6 +189,11 @@ export default function LineLinkOtp({ isLinked }: { isLinked: boolean }) {
       {errorMessage ? (
         <p className="text-sm font-bold text-rose-600" role="alert">
           {errorMessage}
+        </p>
+      ) : null}
+      {statusMessage ? (
+        <p className="text-sm font-bold text-teal-700" role="status">
+          {statusMessage}
         </p>
       ) : null}
 

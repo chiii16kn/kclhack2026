@@ -1,6 +1,7 @@
 "use server";
 
 import { randomInt } from "node:crypto";
+import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 
@@ -30,6 +31,72 @@ export async function isLineAccountLinked(): Promise<boolean> {
   if (!account) throw new Error("家計簿アカウントが見つかりません。");
 
   return account.lineId !== null;
+}
+
+export async function unlinkLineAccount(): Promise<{ notificationSent: boolean }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
+
+  if (error) throw new Error("ログイン状態を確認できませんでした。");
+  if (!user) throw new Error("LINE連携を解除するにはログインしてください。");
+
+  const account = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { id: true, lineId: true },
+  });
+  if (!account) throw new Error("家計簿アカウントが見つかりません。");
+  if (!account.lineId) {
+    revalidatePath("/");
+    return { notificationSent: false };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: account.id },
+      data: { lineId: null },
+    });
+    await tx.otpCode.deleteMany({ where: { userId: account.id } });
+  });
+
+  const channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  if (!channelAccessToken) {
+    console.error("LINE_CHANNEL_ACCESS_TOKEN is not configured; unlink notification was not sent");
+    revalidatePath("/");
+    return { notificationSent: false };
+  }
+
+  try {
+    const response = await fetch("https://api.line.me/v2/bot/message/push", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${channelAccessToken}`,
+      },
+      body: JSON.stringify({
+        to: account.lineId,
+        messages: [{ type: "text", text: "LINEアカウントの連携が解除されました。" }],
+      }),
+    });
+
+    if (!response.ok) {
+      console.error("LINE unlink notification failed:", {
+        status: response.status,
+        body: (await response.text()).slice(0, 1000),
+      });
+      revalidatePath("/");
+      return { notificationSent: false };
+    }
+
+    revalidatePath("/");
+    return { notificationSent: true };
+  } catch (error: unknown) {
+    console.error("LINE unlink notification request failed:", error);
+    revalidatePath("/");
+    return { notificationSent: false };
+  }
 }
 
 export async function issueLineLinkOtp(): Promise<{
