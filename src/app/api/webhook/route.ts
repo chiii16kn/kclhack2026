@@ -19,6 +19,8 @@ function getMessageFormatPrompt(categoryNames: string[]): string {
     "【支出】「カテゴリ名 金額」（例: 食費 2000）",
     "【収入】「収入 金額」（例: 収入 50000）",
     `使用できるカテゴリ: ${availableCategories.join("、")}`,
+    "【カテゴリ追加】「カテゴリ追加 名前 変動費」または「カテゴリ追加 名前 固定費 月額予算」",
+    "例: カテゴリ追加 通信費 固定費 8000",
     "金額だけを送ると食費として登録します。",
   ].join("\n");
 }
@@ -101,21 +103,91 @@ export async function POST(req: Request) {
         continue;
       }
 
-        // 1. テキスト解析 (例: "食費 1200", "収入 50000")
-        const parts = text.split(/\s+/);
-        let categoryName = "";
-        let amount = 0;
-
-        if (parts.length === 2 && Number.isSafeInteger(Number(parts[1])) && Number(parts[1]) > 0) {
-          categoryName = parts[0];
-          amount = Number(parts[1]);
-        } else if (parts.length === 1 && Number.isSafeInteger(Number(parts[0])) && Number(parts[0]) > 0) {
-          categoryName = "食費";
-          amount = Number(parts[0]);
-        } else {
-          await replyLine(replyToken, getMessageFormatPrompt(user.categories.map((category) => category.name)));
+      if (text === "カテゴリ追加" || text.startsWith("カテゴリ追加 ")) {
+        const categoryCommand = text.match(/^カテゴリ追加\s+(.+?)\s+(固定費|変動費)(?:\s+(\d+))?$/);
+        if (!categoryCommand) {
+          await replyLine(
+            replyToken,
+            "カテゴリ追加の形式が正しくありません。\n変動費: カテゴリ追加 名前 変動費\n固定費: カテゴリ追加 名前 固定費 月額予算\n例: カテゴリ追加 通信費 固定費 8000",
+          );
           continue;
         }
+
+        const categoryName = categoryCommand[1].trim();
+        const isFixed = categoryCommand[2] === "固定費";
+        const monthlyBudget = categoryCommand[3] === undefined
+          ? NaN
+          : Number(categoryCommand[3]);
+
+        if (
+          !categoryName ||
+          categoryName.length > 40 ||
+          (isFixed && (
+            !Number.isSafeInteger(monthlyBudget) ||
+            monthlyBudget <= 0 ||
+            monthlyBudget > 2_147_483_647
+          )) ||
+          (!isFixed && categoryCommand[3] !== undefined)
+        ) {
+          await replyLine(
+            replyToken,
+            "カテゴリ名は1〜40文字、固定費の月額予算は1円以上で指定してください。変動費には予算を指定しません。",
+          );
+          continue;
+        }
+
+        const existingCategory = user.categories.find(
+          (category) => category.name.toLowerCase() === categoryName.toLowerCase(),
+        );
+        if (existingCategory) {
+          await replyLine(replyToken, `「${existingCategory.name}」はすでに登録されています。`);
+          continue;
+        }
+
+        const today = new Date();
+        const currentYearMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+        await prisma.$transaction(async (tx) => {
+          const category = await tx.category.create({
+            data: {
+              userId: user.id,
+              name: categoryName,
+              isFixed,
+            },
+          });
+          if (isFixed) {
+            await tx.monthlyBudget.create({
+              data: {
+                userId: user.id,
+                categoryId: category.id,
+                yearMonth: currentYearMonth,
+                amount: monthlyBudget,
+              },
+            });
+          }
+        });
+
+        await replyLine(
+          replyToken,
+          `カテゴリ「${categoryName}」（${isFixed ? `固定費・月額 ¥${monthlyBudget.toLocaleString()}` : "変動費"}）を追加しました。`,
+        );
+        continue;
+      }
+
+      // 1. テキスト解析 (例: "食費 1200", "収入 50000")
+      const parts = text.split(/\s+/);
+      let categoryName = "";
+      let amount = 0;
+
+      if (parts.length === 2 && Number.isSafeInteger(Number(parts[1])) && Number(parts[1]) > 0) {
+        categoryName = parts[0];
+        amount = Number(parts[1]);
+      } else if (parts.length === 1 && Number.isSafeInteger(Number(parts[0])) && Number(parts[0]) > 0) {
+        categoryName = "食費";
+        amount = Number(parts[0]);
+      } else {
+        await replyLine(replyToken, getMessageFormatPrompt(user.categories.map((category) => category.name)));
+        continue;
+      }
 
         const today = new Date();
         const currentYearMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
@@ -156,25 +228,24 @@ export async function POST(req: Request) {
           continue;
         }
 
+        // 5. カテゴリの検索 (▼ c: { name: string } 型定義を追加 ▼)
+        const category = user.categories.find(
+          (c: { name: string }) => c.name.toLowerCase() === categoryName.toLowerCase()
+        );
+
+        if (!category) {
+          await replyLine(
+            replyToken,
+            `「${categoryName}」は登録されていません。\n${getMessageFormatPrompt(user.categories.map((item) => item.name))}`,
+          );
+          continue;
+        }
+
         // 4. 口座の確認
         let account = user.accounts[0];
         if (!account) {
           account = await prisma.account.create({
             data: { userId: user.id, name: "現金（財布）" },
-          });
-        }
-
-        // 5. カテゴリの検索 (▼ c: { name: string } 型定義を追加 ▼)
-        let category = user.categories.find(
-          (c: { name: string }) => c.name.toLowerCase() === categoryName.toLowerCase()
-        );
-
-        if (!category) {
-          category = await prisma.category.create({
-            data: {
-              userId: user.id,
-              name: categoryName,
-            },
           });
         }
 

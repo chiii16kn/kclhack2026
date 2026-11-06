@@ -7,6 +7,7 @@ import { updateOverBudgetMode } from "@/app/actions/user";
 import { addTransaction } from "@/app/actions/transaction";
 import ActionRequiredModal from "@/components/ActionRequiredModal";
 import CategorySettingsButton from "@/components/CategorySettingsButton";
+import CreateCategoryForm from "@/components/CreateCategoryForm";
 import LineLinkOtp from "@/components/LineLinkOtp";
 import type { Prisma } from "@prisma/client";
 
@@ -210,6 +211,8 @@ export default async function Home() {
             <h2 className="text-xl font-extrabold text-gray-700">👜 わたしの袋</h2>
             <span className="text-sm font-bold text-teal-600 bg-teal-50 px-3 py-1 rounded-full">月末まであと {remainingDays} 日</span>
           </div>
+
+          <CreateCategoryForm />
 
           <div className="grid gap-4 sm:grid-cols-2">
             {userData.categories.map((category) => {
