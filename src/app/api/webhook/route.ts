@@ -1,5 +1,6 @@
 // src/app/api/webhook/route.ts
 import { NextResponse } from "next/server";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -10,13 +11,30 @@ function isUnknownArray(value: unknown): value is unknown[] {
   return Array.isArray(value);
 }
 
+function getMessageFormatPrompt(categoryNames: string[]): string {
+  const availableCategories = ["収入", ...new Set(categoryNames.filter((name) => name !== "収入"))];
+
+  return [
+    "💡 次の形式で送信してください。",
+    "【支出】「カテゴリ名 金額」（例: 食費 2000）",
+    "【収入】「収入 金額」（例: 収入 50000）",
+    `使用できるカテゴリ: ${availableCategories.join("、")}`,
+    "金額だけを送ると食費として登録します。",
+  ].join("\n");
+}
+
 export async function POST(req: Request) {
   try {
-    const rawBody: unknown = await req.json();
-    if (!isRecord(rawBody)) {
+    const rawBody = await req.text();
+    if (!isValidLineSignature(rawBody, req.headers.get("x-line-signature"))) {
+      return NextResponse.json({ status: "unauthorized" }, { status: 401 });
+    }
+
+    const parsedBody: unknown = JSON.parse(rawBody);
+    if (!isRecord(parsedBody)) {
       throw new TypeError("Invalid LINE webhook payload");
     }
-    const body = rawBody;
+    const body = parsedBody;
     const events = body.events || [];
     if (!isUnknownArray(events)) {
       throw new TypeError("Invalid LINE webhook events");
@@ -27,61 +45,76 @@ export async function POST(req: Request) {
         throw new TypeError("Invalid LINE webhook event");
       }
       const event = rawEvent;
-      if (event.type === "message") {
-        if (!isRecord(event.message)) {
-          throw new TypeError("Invalid LINE webhook message");
-        }
-        const message = event.message;
-        if (message.type !== "text") continue;
-        if (typeof event.replyToken !== "string" || typeof message.text !== "string") {
-          throw new TypeError("Invalid LINE text message");
-        }
-        const replyToken = event.replyToken;
-        const text = message.text.trim();
+      if (event.type !== "message") continue;
+      if (!isRecord(event.message)) {
+        throw new TypeError("Invalid LINE webhook message");
+      }
+      if (typeof event.replyToken !== "string") {
+        throw new TypeError("Invalid LINE message reply token");
+      }
+
+      const replyToken = event.replyToken;
+      const message = event.message;
+      const source = event.source;
+      const lineUserId = isRecord(source) ? source.userId : undefined;
+
+      if (typeof lineUserId !== "string" || !lineUserId) {
+        await replyLine(replyToken, "LINEユーザーを識別できませんでした。個別トークでお試しください。");
+        continue;
+      }
+
+      const isTextMessage = message.type === "text";
+      const text = isTextMessage && typeof message.text === "string"
+        ? message.text.trim()
+        : null;
+
+      if (text !== null && /^\d{6}$/.test(text)) {
+        const linkResult = await linkLineAccount(text, lineUserId);
+        const responseMessage =
+          linkResult === "linked"
+            ? "アカウントの連携が完了しました！以降は入力した金額が家計簿に反映されます。"
+            : linkResult === "already-linked"
+              ? "このLINEアカウントは別の家計簿アカウントと連携済みです。"
+              : "無効なコード、または期限切れです。Web画面から再発行してください。";
+        await replyLine(replyToken, responseMessage);
+        continue;
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { lineId: lineUserId },
+        include: {
+          categories: true,
+          accounts: true,
+        },
+      });
+
+      if (!user) {
+        await replyLine(
+          replyToken,
+          "家計簿への記録にはアカウント連携が必要です。Web画面でユーザー登録・ログインし、表示されたワンタイム認証コードをLINEボット宛に送信してください。認証コードの有効期限は5分です。",
+        );
+        continue;
+      }
+
+      if (text === null) {
+        await replyLine(replyToken, getMessageFormatPrompt(user.categories.map((category) => category.name)));
+        continue;
+      }
 
         // 1. テキスト解析 (例: "食費 1200", "収入 50000")
-        const parts = text.split(/[\s ]+/);
+        const parts = text.split(/\s+/);
         let categoryName = "";
         let amount = 0;
 
-        if (parts.length >= 2 && !isNaN(Number(parts[1]))) {
+        if (parts.length === 2 && Number.isSafeInteger(Number(parts[1])) && Number(parts[1]) > 0) {
           categoryName = parts[0];
           amount = Number(parts[1]);
-        } else if (parts.length === 1 && !isNaN(Number(parts[0]))) {
+        } else if (parts.length === 1 && Number.isSafeInteger(Number(parts[0])) && Number(parts[0]) > 0) {
           categoryName = "食費";
           amount = Number(parts[0]);
         } else {
-          await replyLine(
-            replyToken,
-            `💡 登録の形式:\n【支出】「カテゴリ名 金額」（例: 食費 1200）\n【収入】「収入 金額」（例: 収入 50000）`
-          );
+          await replyLine(replyToken, getMessageFormatPrompt(user.categories.map((category) => category.name)));
           continue;
-        }
-
-        // 2. ユーザーの取得 (データが存在しない場合は作成)
-        let user = await prisma.user.findFirst({
-          include: {
-            categories: true,
-            accounts: true,
-          },
-        });
-
-        if (!user) {
-          user = await prisma.user.create({
-            data: {
-              email: "default@example.com",
-              accounts: { create: { name: "現金（財布）" } },
-              categories: {
-                create: [
-                  { name: "食費" },
-                  { name: "日用品" },
-                  { name: "交際費" },
-                  { name: "家賃固定費", isFixed: true },
-                ],
-              },
-            },
-            include: { categories: true, accounts: true },
-          });
         }
 
         const today = new Date();
@@ -226,7 +259,7 @@ export async function POST(req: Request) {
                   type: "EXPENSE",
                   date: {
                     gte: new Date(today.getFullYear(), today.getMonth(), 1),
-                    lte: new Date(today.getFullYear(), today.getMonth() + 1, 0),
+                    lt: new Date(today.getFullYear(), today.getMonth() + 1, 1),
                   },
                 },
               });
@@ -243,13 +276,62 @@ export async function POST(req: Request) {
         }
 
         await replyLine(replyToken, responseMsg);
-      }
     }
 
     return NextResponse.json({ status: "success" });
   } catch (error) {
     console.error("LINE Webhook Error:", error);
     return NextResponse.json({ status: "error" }, { status: 500 });
+  }
+}
+
+function isValidLineSignature(body: string, signature: string | null): boolean {
+  const channelSecret = process.env.LINE_CHANNEL_SECRET;
+  if (!channelSecret || !signature) {
+    console.error("LINE_CHANNEL_SECRET or x-line-signature is missing");
+    return false;
+  }
+
+  const expected = createHmac("sha256", channelSecret).update(body).digest();
+  const received = Buffer.from(signature, "base64");
+  return received.length === expected.length && timingSafeEqual(received, expected);
+}
+
+type LineLinkResult = "linked" | "invalid" | "already-linked";
+
+async function linkLineAccount(code: string, lineUserId: string): Promise<LineLinkResult> {
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const otp = await tx.otpCode.findUnique({ where: { code } });
+      const now = new Date();
+
+      if (!otp || otp.expiresAt <= now) {
+        if (otp) {
+          await tx.otpCode.deleteMany({ where: { id: otp.id } });
+        }
+        return "invalid";
+      }
+
+      const claimedOtp = await tx.otpCode.deleteMany({
+        where: {
+          id: otp.id,
+          expiresAt: { gt: now },
+        },
+      });
+      if (claimedOtp.count !== 1) return "invalid";
+
+      await tx.user.update({
+        where: { id: otp.userId },
+        data: { lineId: lineUserId },
+      });
+
+      return "linked";
+    });
+  } catch (error: unknown) {
+    if (isRecord(error) && error.code === "P2002") {
+      return "already-linked";
+    }
+    throw error;
   }
 }
 

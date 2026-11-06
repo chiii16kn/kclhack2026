@@ -10,12 +10,25 @@ datasource db {
 model User {
   id             String          @id @default(uuid())
   email          String          @unique
+  lineId         String?         @unique
   overBudgetMode String          @default("COMPENSATE") // "COMPENSATE" (補填モード) または "WARNING" (マイナス強調モード)
   accounts       Account[]
   categories     Category[]
   transactions   Transaction[]
   budgets        MonthlyBudget[]
   incomes        MonthlyIncome[]
+  otpCode        OtpCode?
+}
+
+model OtpCode {
+  id        String   @id @default(cuid())
+  code      String   @unique @db.VarChar(6)
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
 }
 
 // ② 月次収入モデル（今月の利用可能総額プール）

@@ -46,27 +46,6 @@ export default function LoginPage() {
     }
   };
 
-  // LINE OAuthでのログイン処理
-  const handleLineLogin = async () => {
-    setIsLoading(true);
-    setMessage({ text: "LINEを開いています...", isError: false });
-
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "custom:line",
-        options: {
-          // 認証後のリダイレクト先（ダッシュボードまたはコールバックURL）
-          redirectTo: `${window.location.origin}/auth/callback`,
-        },
-      });
-
-      if (error) throw error;
-    } catch {
-      setMessage({ text: "LINEログインに失敗しました。", isError: true });
-      setIsLoading(false);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-orange-50 flex flex-col justify-center items-center p-4 font-sans text-gray-800">
       <div className="w-full max-w-md bg-white rounded-[2rem] shadow-sm border-2 border-orange-100 p-8 space-y-6">
@@ -129,26 +108,6 @@ export default function LoginPage() {
         >
           新規ユーザー登録
         </Link>
-
-        {/* 区切り線 */}
-        <div className="relative flex items-center py-2">
-          <div className="flex-grow border-t-2 border-gray-100"></div>
-          <span className="flex-shrink-0 mx-4 text-gray-300 text-xs font-bold">または</span>
-          <div className="flex-grow border-t-2 border-gray-100"></div>
-        </div>
-
-        {/* LINEログインボタン */}
-        <button
-          type="button"
-          onClick={handleLineLogin}
-          disabled={isLoading}
-          className="w-full py-3.5 bg-[#06C755] hover:bg-[#05b34c] text-white rounded-full font-bold shadow-sm transition-transform active:scale-95 disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center gap-2"
-        >
-          <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current">
-            <path d="M24 10.304c0-5.369-5.383-9.738-12-9.738-6.616 0-12 4.369-12 9.738 0 4.814 3.269 8.846 8.14 9.579.317.067.747.206.858.583.1.341.033.868 0 1.222-.05.485-.239 1.436-.289 1.637-.082.333-.333 1.637 1.385.918 1.716-.72 9.317-5.48 11.458-8.887 1.616-2.583 2.448-4.908 2.448-5.052z"/>
-          </svg>
-          LINEでログイン
-        </button>
       </div>
     </div>
   );
