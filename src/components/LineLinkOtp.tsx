@@ -1,7 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { issueLineLinkOtp } from "@/app/actions/line-link";
+import { useCallback, useEffect, useState } from "react";
+import {
+  isLineAccountLinked,
+  issueLineLinkOtp,
+} from "@/app/actions/line-link";
 
 type IssuedOtp = {
   code: string;
@@ -9,15 +12,16 @@ type IssuedOtp = {
 };
 
 function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "連携コードを発行できませんでした。";
+  return error instanceof Error ? error.message : "LINE連携の処理に失敗しました。";
 }
 
 export default function LineLinkOtp({ isLinked }: { isLinked: boolean }) {
+  const [linked, setLinked] = useState(false);
+  const accountLinked = isLinked || linked;
   const [otp, setOtp] = useState<IssuedOtp | null>(null);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [isIssuing, setIsIssuing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const hasRequestedInitialCode = useRef(false);
 
   const issueCode = useCallback(async () => {
     setIsIssuing(true);
@@ -36,10 +40,46 @@ export default function LineLinkOtp({ isLinked }: { isLinked: boolean }) {
   }, []);
 
   useEffect(() => {
-    if (hasRequestedInitialCode.current) return;
-    hasRequestedInitialCode.current = true;
-    void issueCode();
-  }, [issueCode]);
+    let isActive = true;
+    void (async () => {
+      try {
+        const accountIsLinked = await isLineAccountLinked();
+        if (!isActive) return;
+        setLinked(accountIsLinked);
+        if (!accountIsLinked && !isLinked) await issueCode();
+      } catch (error: unknown) {
+        if (isActive) setErrorMessage(getErrorMessage(error));
+      }
+    })();
+
+    return () => {
+      isActive = false;
+    };
+  }, [isLinked, issueCode]);
+
+  useEffect(() => {
+    if (accountLinked) return;
+
+    let isActive = true;
+    const intervalId = window.setInterval(() => {
+      void isLineAccountLinked()
+        .then((accountIsLinked) => {
+          if (isActive && accountIsLinked) {
+            setLinked(true);
+            setOtp(null);
+            setRemainingSeconds(0);
+          }
+        })
+        .catch((error: unknown) => {
+          if (isActive) setErrorMessage(getErrorMessage(error));
+        });
+    }, 5000);
+
+    return () => {
+      isActive = false;
+      window.clearInterval(intervalId);
+    };
+  }, [accountLinked]);
 
   useEffect(() => {
     if (!otp) return;
@@ -56,19 +96,26 @@ export default function LineLinkOtp({ isLinked }: { isLinked: boolean }) {
   const seconds = remainingSeconds % 60;
   const isExpired = remainingSeconds === 0;
 
+  if (accountLinked) {
+    return (
+      <section className="rounded-3xl border-2 border-green-100 bg-white p-5 shadow-sm">
+        <h2 className="font-extrabold text-gray-800">LINEアカウント連携済み</h2>
+        <p className="mt-1 text-sm text-gray-500">
+          LINEアカウントとの連携が完了しています。
+        </p>
+      </section>
+    );
+  }
+
   return (
     <section className="rounded-3xl border-2 border-green-100 bg-white p-5 shadow-sm space-y-3">
       <div>
         <h2 className="font-extrabold text-gray-800">LINEアカウント連携</h2>
-        <p className="mt-1 text-sm text-gray-500">
-          {isLinked
-            ? "LINEアカウントは連携済みです。別のLINEアカウントに変更する場合は、新しいコードを発行してください。"
-            : "家計簿アカウントとLINEボットを連携します。"}
-        </p>
+        <p className="mt-1 text-sm text-gray-500">家計簿アカウントとLINEボットを連携します。</p>
       </div>
 
       <p className="text-sm font-bold text-gray-700">
-        以下のワンタイムパスワードをLINEボット宛に15分以内に送信してください。
+        以下のワンタイムパスワードをLINEボット宛に5分以内に送信してください。
       </p>
 
       {otp ? (

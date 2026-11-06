@@ -13,6 +13,25 @@ function isUniqueConstraintError(error: unknown): boolean {
   );
 }
 
+export async function isLineAccountLinked(): Promise<boolean> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
+
+  if (error) throw new Error("ログイン状態を確認できませんでした。");
+  if (!user) throw new Error("LINE連携状態を確認するにはログインしてください。");
+
+  const account = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { lineId: true },
+  });
+  if (!account) throw new Error("家計簿アカウントが見つかりません。");
+
+  return account.lineId !== null;
+}
+
 export async function issueLineLinkOtp(): Promise<{
   code: string;
   expiresAt: string;
@@ -32,7 +51,7 @@ export async function issueLineLinkOtp(): Promise<{
   });
   if (!account) throw new Error("家計簿アカウントが見つかりません。");
 
-  const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const code = randomInt(0, 1_000_000).toString().padStart(6, "0");

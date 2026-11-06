@@ -65,4 +65,4 @@ http://localhost:3000
 
 ### LINEアカウント連携
 
-ログイン後、ホーム画面の「LINEアカウント連携」に表示された6桁のコードをLINEボットへ15分以内に送信してください。期限切れの場合は、画面からコードを再発行できます。Webhookを利用するには、LINE DevelopersのMessaging APIチャネルにあるChannel access tokenとChannel secretを、それぞれ `LINE_CHANNEL_ACCESS_TOKEN` と `LINE_CHANNEL_SECRET` として環境変数に設定してください。
+ログイン後、ホーム画面の「LINEアカウント連携」に表示された6桁のコードをLINEボットへ5分以内に送信してください。期限切れの場合は、画面からコードを再発行できます。Webhookを利用するには、LINE DevelopersのMessaging APIチャネルにあるChannel access tokenとChannel secretを、それぞれ `LINE_CHANNEL_ACCESS_TOKEN` と `LINE_CHANNEL_SECRET` として環境変数に設定してください。

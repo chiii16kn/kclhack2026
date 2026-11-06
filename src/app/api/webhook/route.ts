@@ -11,6 +11,18 @@ function isUnknownArray(value: unknown): value is unknown[] {
   return Array.isArray(value);
 }
 
+function getMessageFormatPrompt(categoryNames: string[]): string {
+  const availableCategories = ["収入", ...new Set(categoryNames.filter((name) => name !== "収入"))];
+
+  return [
+    "💡 次の形式で送信してください。",
+    "【支出】「カテゴリ名 金額」（例: 食費 2000）",
+    "【収入】「収入 金額」（例: 収入 50000）",
+    `使用できるカテゴリ: ${availableCategories.join("、")}`,
+    "金額だけを送ると食費として登録します。",
+  ].join("\n");
+}
+
 export async function POST(req: Request) {
   try {
     const rawBody = await req.text();
@@ -33,69 +45,75 @@ export async function POST(req: Request) {
         throw new TypeError("Invalid LINE webhook event");
       }
       const event = rawEvent;
-      if (event.type === "message") {
-        if (!isRecord(event.message)) {
-          throw new TypeError("Invalid LINE webhook message");
-        }
-        const message = event.message;
-        if (message.type !== "text") continue;
-        if (typeof event.replyToken !== "string" || typeof message.text !== "string") {
-          throw new TypeError("Invalid LINE text message");
-        }
-        const replyToken = event.replyToken;
-        const text = message.text.trim();
-        const source = event.source;
-        const lineUserId = isRecord(source) ? source.userId : undefined;
+      if (event.type !== "message") continue;
+      if (!isRecord(event.message)) {
+        throw new TypeError("Invalid LINE webhook message");
+      }
+      if (typeof event.replyToken !== "string") {
+        throw new TypeError("Invalid LINE message reply token");
+      }
 
-        if (typeof lineUserId !== "string" || !lineUserId) {
-          await replyLine(replyToken, "LINEユーザーを識別できませんでした。個別トークでお試しください。");
-          continue;
-        }
+      const replyToken = event.replyToken;
+      const message = event.message;
+      const source = event.source;
+      const lineUserId = isRecord(source) ? source.userId : undefined;
 
-        if (/^\d{6}$/.test(text)) {
-          const linkResult = await linkLineAccount(text, lineUserId);
-          const responseMessage =
-            linkResult === "linked"
-              ? "アカウントの連携が完了しました！以降は入力した金額が家計簿に反映されます。"
-              : linkResult === "already-linked"
-                ? "このLINEアカウントは別の家計簿アカウントと連携済みです。"
-                : "無効なコード、または期限切れです。Web画面から再発行してください。";
-          await replyLine(replyToken, responseMessage);
-          continue;
-        }
+      if (typeof lineUserId !== "string" || !lineUserId) {
+        await replyLine(replyToken, "LINEユーザーを識別できませんでした。個別トークでお試しください。");
+        continue;
+      }
 
-        const user = await prisma.user.findUnique({
-          where: { lineId: lineUserId },
-          include: {
-            categories: true,
-            accounts: true,
-          },
-        });
+      const isTextMessage = message.type === "text";
+      const text = isTextMessage && typeof message.text === "string"
+        ? message.text.trim()
+        : null;
 
-        if (!user) {
-          await replyLine(
-            replyToken,
-            "Web画面からログインし、ワンタイムパスワードを発行・送信して連携を完了させてください。",
-          );
-          continue;
-        }
+      if (text !== null && /^\d{6}$/.test(text)) {
+        const linkResult = await linkLineAccount(text, lineUserId);
+        const responseMessage =
+          linkResult === "linked"
+            ? "アカウントの連携が完了しました！以降は入力した金額が家計簿に反映されます。"
+            : linkResult === "already-linked"
+              ? "このLINEアカウントは別の家計簿アカウントと連携済みです。"
+              : "無効なコード、または期限切れです。Web画面から再発行してください。";
+        await replyLine(replyToken, responseMessage);
+        continue;
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { lineId: lineUserId },
+        include: {
+          categories: true,
+          accounts: true,
+        },
+      });
+
+      if (!user) {
+        await replyLine(
+          replyToken,
+          "家計簿への記録にはアカウント連携が必要です。Web画面でユーザー登録・ログインし、表示されたワンタイム認証コードをLINEボット宛に送信してください。認証コードの有効期限は5分です。",
+        );
+        continue;
+      }
+
+      if (text === null) {
+        await replyLine(replyToken, getMessageFormatPrompt(user.categories.map((category) => category.name)));
+        continue;
+      }
 
         // 1. テキスト解析 (例: "食費 1200", "収入 50000")
         const parts = text.split(/\s+/);
         let categoryName = "";
         let amount = 0;
 
-        if (parts.length >= 2 && Number.isSafeInteger(Number(parts[1])) && Number(parts[1]) > 0) {
+        if (parts.length === 2 && Number.isSafeInteger(Number(parts[1])) && Number(parts[1]) > 0) {
           categoryName = parts[0];
           amount = Number(parts[1]);
         } else if (parts.length === 1 && Number.isSafeInteger(Number(parts[0])) && Number(parts[0]) > 0) {
           categoryName = "食費";
           amount = Number(parts[0]);
         } else {
-          await replyLine(
-            replyToken,
-            `💡 登録の形式:\n【支出】「カテゴリ名 金額」（例: 食費 1200）\n【収入】「収入 金額」（例: 収入 50000）`
-          );
+          await replyLine(replyToken, getMessageFormatPrompt(user.categories.map((category) => category.name)));
           continue;
         }
 
@@ -258,7 +276,6 @@ export async function POST(req: Request) {
         }
 
         await replyLine(replyToken, responseMsg);
-      }
     }
 
     return NextResponse.json({ status: "success" });
