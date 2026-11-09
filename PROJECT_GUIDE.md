@@ -93,7 +93,7 @@ LINE利用者                         Next.jsサーバー
 5. [`src/proxy.ts`](./src/proxy.ts)から[`src/lib/supabase/proxy.ts`](./src/lib/supabase/proxy.ts)を通り、リクエストごとにSupabaseのセッション情報を更新します。
 6. ホーム画面はサーバー側でセッションのユーザーを取得し、その人の家計簿データだけを読み込みます。
 
-ホーム画面を表示するにはログインが必要ですが、proxyの役割はセッション更新です。各画面・Server Action自体の認証処理と混同しないでください。
+ホーム画面を表示するにはログインが必要ですが、proxyの役割はセッション更新です。各画面・Server Action自体の認証処理と混同しないcoでください。
 
 ### ホーム画面と予算
 
@@ -169,6 +169,7 @@ LINE DevelopersでMessaging APIのWebhook URLを、公開Webサイトの`https:/
 | [`src/app/signup/page.tsx`](./src/app/signup/page.tsx) | `/signup`。メールとパスワードを入力する新規登録画面 |
 | [`src/app/signup/actions.ts`](./src/app/signup/actions.ts) | Supabase Authユーザーと家計簿DBユーザー、初期口座・カテゴリを作成 |
 | [`src/app/api/webhook/route.ts`](./src/app/api/webhook/route.ts) | `/api/webhook`。LINE署名確認、OTP連携、LINEからの収支・カテゴリ登録、LINE返信 |
+| [`src/app/api/cron/daily-reminder/route.ts`](./src/app/api/cron/daily-reminder/route.ts) | `/api/cron/daily-reminder`。日本時間当日の支出集計と、LINEへの入力確認通知 |
 
 ### サーバー処理（Server Actions）
 
@@ -252,8 +253,15 @@ LINE DevelopersでMessaging APIのWebhook URLを、公開Webサイトの`https:/
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabaseクライアントの公開可能キー。サーバー秘密鍵やDBパスワードとは異なる |
 | `LINE_CHANNEL_ACCESS_TOKEN` | サーバーからLINE Messaging APIへ返信・Push通知するときに使う秘密トークン |
 | `LINE_CHANNEL_SECRET` | LINE Webhook署名の検証に使う秘密値 |
+| `CRON_SECRET` | 日次リマインダーAPIをVercel Cronから呼び出すための秘密値 |
 
 LINEのWebhook URLには、公開済み環境の`https://<ドメイン>/api/webhook`を設定します。LINEからそのURLへ到達できる必要があります。プレビュー環境に認証ゲートがかかっているとLINEがWebhookに到達できないため、Webhookを公開URLから利用可能にしてください。
+
+## 日次のLINEリマインダー
+
+[`vercel.json`](./vercel.json)で毎日12:00 UTC（日本時間21:00）に[`src/app/api/cron/daily-reminder/route.ts`](./src/app/api/cron/daily-reminder/route.ts)を呼び出します。Vercelの本番環境に`CRON_SECRET`と`LINE_CHANNEL_ACCESS_TOKEN`を設定してください。LINE連携済みのユーザーへ当日の支出合計と件数を送り、支出記録がない場合も入力忘れがないか確認するメッセージを送ります。日付の集計は日本時間です。
+
+Vercel以外で運用する場合は、毎日日本時間21:00に同APIを`Authorization: Bearer <CRON_SECRET>`ヘッダー付きで呼び出すスケジューラーを設定してください。
 
 ## 9. 開発・DB更新・確認
 
