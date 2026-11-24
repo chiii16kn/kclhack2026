@@ -4,9 +4,9 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { isValidAmount, MAX_AMOUNT } from "@/lib/amount";
 import { isUniqueConstraintError } from "@/lib/prisma-errors";
+import { calcPocket } from "@/lib/pocket";
 import {
   getJstDateParts,
-  getJstDayOfMonth,
   getJstMonthRange,
   getJstRemainingDaysInMonth,
   getJstYearMonth,
@@ -21,6 +21,79 @@ function isUnknownArray(value: unknown): value is unknown[] {
 }
 
 const UNDO_COMMANDS = ["取り消し", "取消", "取り消す", "とりけし"];
+const BALANCE_COMMANDS = ["残高", "ざんだか", "残り", "のこり"];
+
+// 「残高」コマンド: 袋ごとの今月の残額・計算方法・1日/1回あたり使える額をまとめる
+async function buildBalanceMessage(user: {
+  id: string;
+  categories: {
+    id: string;
+    name: string;
+    isFixed: boolean;
+    countType: string;
+    countValue: number;
+    mergeSameDay: boolean;
+  }[];
+}): Promise<string> {
+  const yearMonth = getJstYearMonth();
+  const remainingDays = getJstRemainingDaysInMonth();
+
+  const [budgets, transactions] = await Promise.all([
+    prisma.monthlyBudget.findMany({
+      where: { userId: user.id, yearMonth },
+      select: { categoryId: true, amount: true },
+    }),
+    prisma.transaction.findMany({
+      where: { userId: user.id, type: "EXPENSE", date: getJstMonthRange() },
+      select: { categoryId: true, amount: true, date: true },
+    }),
+  ]);
+
+  const { month } = getJstDateParts();
+  const lines = [`👛 ${month}月の袋の残高（月末まであと${remainingDays}日）`];
+
+  if (user.categories.length === 0) {
+    lines.push("", "袋（カテゴリ）がまだありません。");
+    return lines.join("\n");
+  }
+
+  for (const category of user.categories) {
+    const budget = budgets.find((b) => b.categoryId === category.id)?.amount ?? 0;
+    const pocket = calcPocket(
+      category,
+      budget,
+      transactions.filter((t) => t.categoryId === category.id),
+      remainingDays,
+    );
+
+    const status = pocket.remainingBudget < 0 ? "🚨" : "✅";
+    lines.push(
+      "",
+      `${status}【${category.name}】残り ¥${pocket.remainingBudget.toLocaleString()}`,
+      `　予算 ¥${pocket.budget.toLocaleString()} − 使用 ¥${pocket.expense.toLocaleString()}`,
+    );
+
+    if (category.isFixed) {
+      lines.push("　計算: 固定費（1日/1回あたりの計算なし）");
+      continue;
+    }
+
+    if (pocket.isCountMode) {
+      const usedLabel = category.mergeSameDay ? "使った日数" : "使った回数";
+      lines.push(
+        `　計算: 回数割（月${pocket.countTarget}回・${usedLabel}${pocket.usedCount}回 → 残り${pocket.remainingUnits}回）`,
+        `　1回あたり ¥${pocket.availablePerUnit.toLocaleString()}`,
+      );
+    } else {
+      lines.push(
+        `　計算: 日数割（残り${pocket.remainingUnits}日）`,
+        `　1日あたり ¥${pocket.availablePerUnit.toLocaleString()}`,
+      );
+    }
+  }
+
+  return lines.join("\n");
+}
 
 function getMessageFormatPrompt(categoryNames: string[]): string {
   const availableCategories = ["収入", ...new Set(categoryNames.filter((name) => name !== "収入"))];
@@ -34,6 +107,7 @@ function getMessageFormatPrompt(categoryNames: string[]): string {
     "例: カテゴリ追加 通信費 固定費 8000",
     "金額だけを送ると食費として登録します。",
     "【取り消し】「取り消し」と送ると直前の支出を削除します。",
+    "【残高】「残高」と送ると袋ごとの残りと1日/1回あたり使える額を表示します。",
   ].join("\n");
 }
 
@@ -132,6 +206,12 @@ async function handleEvent(rawEvent: unknown): Promise<void> {
 
   if (text === null) {
     await replyLine(replyToken, getMessageFormatPrompt(user.categories.map((category) => category.name)));
+    return;
+  }
+
+  // 袋ごとの残高を表示する
+  if (BALANCE_COMMANDS.includes(text)) {
+    await replyLine(replyToken, await buildBalanceMessage(user));
     return;
   }
 
@@ -349,20 +429,12 @@ async function handleEvent(rawEvent: unknown): Promise<void> {
     },
   });
 
-  const catExpense = transactions.reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
-  const remainingBudget = catBudget - catExpense;
-  const isCountMode = category.countType !== "DAILY" && category.countType !== "DAY";
-  const countTarget = category.countValue > 0 ? category.countValue : 1;
-  const usedCount = category.mergeSameDay
-    ? new Set(transactions.map((transaction) => getJstDayOfMonth(new Date(transaction.date)))).size
-    : transactions.length;
-  const remainingCount = Math.max(1, countTarget - usedCount);
-  const remainingUnits = isCountMode ? remainingCount : remainingDays;
-
-  const dailyAvailable =
-    !category.isFixed && remainingBudget > 0
-      ? Math.floor(remainingBudget / remainingUnits)
-      : 0;
+  const {
+    remainingBudget,
+    isCountMode,
+    remainingUnits,
+    availablePerUnit: dailyAvailable,
+  } = calcPocket(category, catBudget, transactions, remainingDays);
 
   // 8. 返信メッセージの生成
   let responseMsg = `📝 【${category.name}】に ¥${amount.toLocaleString()} を記録しました！\n\n📁 カテゴリ今月残額: ¥${remainingBudget.toLocaleString()}\n`;

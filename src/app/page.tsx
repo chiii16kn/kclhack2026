@@ -12,9 +12,9 @@ import LineLinkOtp from "@/components/LineLinkOtp";
 import DeleteTransactionButton from "@/components/DeleteTransactionButton";
 import type { Prisma } from "@prisma/client";
 import { ensureAppUser } from "@/lib/app-user";
+import { calcPocket } from "@/lib/pocket";
 import {
   getJstDateParts,
-  getJstDayOfMonth,
   getJstMonthRange,
   getJstRemainingDaysInMonth,
   getJstYearMonth,
@@ -267,26 +267,14 @@ export default async function Home() {
           <div className="grid gap-4 sm:grid-cols-2">
             {userData.categories.map((category) => {
               const budget = category.budgets[0]?.amount ?? 0;
-              const expense = category.transactions.reduce((sum, t) => sum + t.amount, 0);
-              const remainingBudget = budget - expense;
-              
-              // DAILY 以外が指定されていれば回数割モードとして判定
-              const isCountMode = Boolean(category.countType && category.countType !== "DAILY" && category.countType !== "DAY");
-              const countTarget = category.countValue && category.countValue > 0 ? category.countValue : 1;
-              
-              // 同日まとめ設定がONなら利用した「日」の数をカウント、OFFなら単純な決済件数
-              const usedCount = category.mergeSameDay 
-                ? new Set(category.transactions.map(t => getJstDayOfMonth(new Date(t.date)))).size 
-                : category.transactions.length;
-              
-              // 残りの目標回数（最小1回）
-              const remainingCount = Math.max(1, countTarget - usedCount);
-              
-              // 1回あたり / 1日あたりの利用可能額
-              const availablePerUnit = !category.isFixed && remainingBudget > 0 
-                ? Math.floor(remainingBudget / (isCountMode ? remainingCount : remainingDays)) 
-                : 0;
-                
+              // 残額・日数割/回数割・1日(1回)あたりの利用可能額（LINE の返信と同じ計算）
+              const { expense, remainingBudget, isCountMode, availablePerUnit } = calcPocket(
+                category,
+                budget,
+                category.transactions,
+                remainingDays,
+              );
+
               const unitLabel = isCountMode ? "1回" : "1日";
 
               const expensePercent = budget > 0 ? Math.min(100, Math.max(0, (expense / budget) * 100)) : 0;
