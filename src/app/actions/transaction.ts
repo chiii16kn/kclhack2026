@@ -4,21 +4,27 @@
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getFormDataString } from "@/lib/form-data";
+import { isValidAmount } from "@/lib/amount";
 import { revalidatePath } from "next/cache";
 
 export async function addTransaction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  
-  // ログインユーザーがいない場合は DB の先頭ユーザーを取得（検証用）
-  const targetUserId = user?.id || (await prisma.user.findFirst())?.id;
-  if (!targetUserId) return;
+  if (!user) return;
+  const targetUserId = user.id;
 
   const categoryId = getFormDataString(formData, "categoryId");
   const amount = Number(formData.get("amount"));
   const memo = getFormDataString(formData, "memo") || "Web手動登録";
 
-  if (!categoryId || isNaN(amount) || amount <= 0) return;
+  if (!categoryId || !isValidAmount(amount)) return;
+
+  // 自分のカテゴリ以外には記録させない
+  const category = await prisma.category.findFirst({
+    where: { id: categoryId, userId: targetUserId },
+    select: { id: true },
+  });
+  if (!category) return;
 
   // デフォルト口座を取得（無ければ自動生成）
   let account = await prisma.account.findFirst({

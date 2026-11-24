@@ -4,6 +4,8 @@
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getFormDataString } from "@/lib/form-data";
+import { isValidAmount } from "@/lib/amount";
+import { isValidYearMonth } from "@/lib/date-jst";
 import { revalidatePath } from "next/cache";
 
 // ① 今月の総収入（利用可能総額）を保存・更新するアクション
@@ -15,7 +17,8 @@ export async function updateMonthlyIncome(formData: FormData) {
   const yearMonth = getFormDataString(formData, "yearMonth");
   const amount = Number(formData.get("amount") || 0);
 
-  if (!yearMonth) return;
+  if (!isValidYearMonth(yearMonth)) return;
+  if (!isValidAmount(amount, { allowZero: true })) return;
 
   await prisma.monthlyIncome.upsert({
     where: {
@@ -45,7 +48,15 @@ export async function updateCategoryBudget(formData: FormData) {
   const yearMonth = getFormDataString(formData, "yearMonth");
   const amount = Number(formData.get("amount") || 0);
 
-  if (!categoryId || !yearMonth) return;
+  if (!categoryId || !isValidYearMonth(yearMonth)) return;
+  if (!isValidAmount(amount, { allowZero: true })) return;
+
+  // 自分のカテゴリ以外の予算は変更させない
+  const category = await prisma.category.findFirst({
+    where: { id: categoryId, userId: user.id },
+    select: { id: true },
+  });
+  if (!category) return;
 
   await prisma.monthlyBudget.upsert({
     where: {

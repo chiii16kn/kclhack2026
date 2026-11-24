@@ -2,6 +2,13 @@
 import { NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { prisma } from "@/lib/prisma";
+import { isValidAmount, MAX_AMOUNT } from "@/lib/amount";
+import {
+  getJstDayOfMonth,
+  getJstMonthRange,
+  getJstRemainingDaysInMonth,
+  getJstYearMonth,
+} from "@/lib/date-jst";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -43,310 +50,13 @@ export async function POST(req: Request) {
     }
 
     for (const rawEvent of events) {
-      if (!isRecord(rawEvent)) {
-        throw new TypeError("Invalid LINE webhook event");
+      // 1件のイベントで失敗しても他のイベントは処理し、200 を返します。
+      // （500 を返すと LINE が同じ Webhook を再送し、処理済みの支出が二重に記録されるため）
+      try {
+        await handleEvent(rawEvent);
+      } catch (error) {
+        console.error("LINE Webhook event error:", error);
       }
-      const event = rawEvent;
-      if (event.type !== "message") continue;
-      if (!isRecord(event.message)) {
-        throw new TypeError("Invalid LINE webhook message");
-      }
-      if (typeof event.replyToken !== "string") {
-        throw new TypeError("Invalid LINE message reply token");
-      }
-
-      const replyToken = event.replyToken;
-      const message = event.message;
-      const source = event.source;
-      const lineUserId = isRecord(source) ? source.userId : undefined;
-
-      if (typeof lineUserId !== "string" || !lineUserId) {
-        await replyLine(replyToken, "LINEユーザーを識別できませんでした。個別トークでお試しください。");
-        continue;
-      }
-
-      const isTextMessage = message.type === "text";
-      const text = isTextMessage && typeof message.text === "string"
-        ? message.text.trim()
-        : null;
-
-      if (text !== null && /^\d{6}$/.test(text)) {
-        const linkResult = await linkLineAccount(text, lineUserId);
-        const responseMessage =
-          linkResult === "linked"
-            ? "アカウントの連携が完了しました！以降は入力した金額が家計簿に反映されます。"
-            : linkResult === "already-linked"
-              ? "このLINEアカウントは別の家計簿アカウントと連携済みです。"
-              : "無効なコード、または期限切れです。Web画面から再発行してください。";
-        await replyLine(replyToken, responseMessage);
-        continue;
-      }
-
-      const user = await prisma.user.findUnique({
-        where: { lineId: lineUserId },
-        include: {
-          categories: true,
-          accounts: true,
-        },
-      });
-
-      if (!user) {
-        await replyLine(
-          replyToken,
-          "家計簿への記録にはアカウント連携が必要です。Web画面でユーザー登録・ログインし、表示されたワンタイム認証コードをLINEボット宛に送信してください。認証コードの有効期限は5分です。",
-        );
-        continue;
-      }
-
-      if (text === null) {
-        await replyLine(replyToken, getMessageFormatPrompt(user.categories.map((category) => category.name)));
-        continue;
-      }
-
-      if (text === "カテゴリ追加" || text.startsWith("カテゴリ追加 ")) {
-        const categoryCommand = text.match(/^カテゴリ追加\s+(.+?)\s+(固定費|変動費)(?:\s+(\d+))?$/);
-        if (!categoryCommand) {
-          await replyLine(
-            replyToken,
-            "カテゴリ追加の形式が正しくありません。\n変動費: カテゴリ追加 名前 変動費\n固定費: カテゴリ追加 名前 固定費 月額予算\n例: カテゴリ追加 通信費 固定費 8000",
-          );
-          continue;
-        }
-
-        const categoryName = categoryCommand[1].trim();
-        const isFixed = categoryCommand[2] === "固定費";
-        const monthlyBudget = categoryCommand[3] === undefined
-          ? NaN
-          : Number(categoryCommand[3]);
-
-        if (
-          !categoryName ||
-          categoryName.length > 40 ||
-          (isFixed && (
-            !Number.isSafeInteger(monthlyBudget) ||
-            monthlyBudget <= 0 ||
-            monthlyBudget > 2_147_483_647
-          )) ||
-          (!isFixed && categoryCommand[3] !== undefined)
-        ) {
-          await replyLine(
-            replyToken,
-            "カテゴリ名は1〜40文字、固定費の月額予算は1円以上で指定してください。変動費には予算を指定しません。",
-          );
-          continue;
-        }
-
-        const existingCategory = user.categories.find(
-          (category) => category.name.toLowerCase() === categoryName.toLowerCase(),
-        );
-        if (existingCategory) {
-          await replyLine(replyToken, `「${existingCategory.name}」はすでに登録されています。`);
-          continue;
-        }
-
-        const today = new Date();
-        const currentYearMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-        await prisma.$transaction(async (tx) => {
-          const category = await tx.category.create({
-            data: {
-              userId: user.id,
-              name: categoryName,
-              isFixed,
-            },
-          });
-          if (isFixed) {
-            await tx.monthlyBudget.create({
-              data: {
-                userId: user.id,
-                categoryId: category.id,
-                yearMonth: currentYearMonth,
-                amount: monthlyBudget,
-              },
-            });
-          }
-        });
-
-        await replyLine(
-          replyToken,
-          `カテゴリ「${categoryName}」（${isFixed ? `固定費・月額 ¥${monthlyBudget.toLocaleString()}` : "変動費"}）を追加しました。`,
-        );
-        continue;
-      }
-
-      // 1. テキスト解析 (例: "食費 1200", "収入 50000")
-      const parts = text.split(/\s+/);
-      let categoryName = "";
-      let amount = 0;
-
-      if (parts.length === 2 && Number.isSafeInteger(Number(parts[1])) && Number(parts[1]) > 0) {
-        categoryName = parts[0];
-        amount = Number(parts[1]);
-      } else if (parts.length === 1 && Number.isSafeInteger(Number(parts[0])) && Number(parts[0]) > 0) {
-        categoryName = "食費";
-        amount = Number(parts[0]);
-      } else {
-        await replyLine(replyToken, getMessageFormatPrompt(user.categories.map((category) => category.name)));
-        continue;
-      }
-
-        const today = new Date();
-        const currentYearMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-
-        // 3. 収入キーワードの判定 (収入、給料、入金、ボーナス、手当)
-        const incomeKeywords = ["収入", "給料", "入金", "ボーナス", "手当"];
-        const isIncome = incomeKeywords.some((keyword) =>
-          categoryName.includes(keyword)
-        );
-
-        if (isIncome) {
-          const currentIncome = await prisma.monthlyIncome.findFirst({
-            where: {
-              userId: user.id,
-              yearMonth: currentYearMonth,
-            },
-          });
-
-          const newTotal = (currentIncome?.amount ?? 0) + amount;
-
-          if (currentIncome) {
-            await prisma.monthlyIncome.update({
-              where: { id: currentIncome.id },
-              data: { amount: newTotal },
-            });
-          } else {
-            await prisma.monthlyIncome.create({
-              data: {
-                userId: user.id,
-                yearMonth: currentYearMonth,
-                amount: newTotal,
-              },
-            });
-          }
-
-          const responseMsg = `💰 今月の収入に ¥${amount.toLocaleString()} を追加しました！\n\n今月の総収入: ¥${newTotal.toLocaleString()}`;
-          await replyLine(replyToken, responseMsg);
-          continue;
-        }
-
-        // 5. カテゴリの検索 (▼ c: { name: string } 型定義を追加 ▼)
-        const category = user.categories.find(
-          (c: { name: string }) => c.name.toLowerCase() === categoryName.toLowerCase()
-        );
-
-        if (!category) {
-          await replyLine(
-            replyToken,
-            `「${categoryName}」は登録されていません。\n${getMessageFormatPrompt(user.categories.map((item) => item.name))}`,
-          );
-          continue;
-        }
-
-        // 4. 口座の確認
-        let account = user.accounts[0];
-        if (!account) {
-          account = await prisma.account.create({
-            data: { userId: user.id, name: "現金（財布）" },
-          });
-        }
-
-        // 6. 支出データ (Transaction) の記録
-        await prisma.transaction.create({
-          data: {
-            userId: user.id,
-            accountId: account.id,
-            categoryId: category.id,
-            type: "EXPENSE",
-            amount: amount,
-            memo: "LINEクイック登録",
-          },
-        });
-
-        // 7. 今月の残額 & 1日/1回あたりの残枠計算
-        const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-        const remainingDays = Math.max(1, lastDay - today.getDate() + 1);
-
-        const budgetData = await prisma.monthlyBudget.findFirst({
-          where: {
-            categoryId: category.id,
-            yearMonth: currentYearMonth,
-          },
-        });
-
-        const catBudget = budgetData?.amount ?? 0;
-
-        const transactions = await prisma.transaction.findMany({
-          where: {
-            categoryId: category.id,
-            type: "EXPENSE",
-            date: {
-              gte: new Date(today.getFullYear(), today.getMonth(), 1),
-              lt: new Date(today.getFullYear(), today.getMonth() + 1, 1),
-            },
-          },
-        });
-
-        const catExpense = transactions.reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
-        const remainingBudget = catBudget - catExpense;
-        const isCountMode = category.countType !== "DAILY" && category.countType !== "DAY";
-        const countTarget = category.countValue > 0 ? category.countValue : 1;
-        const usedCount = category.mergeSameDay
-          ? new Set(transactions.map((transaction) => new Date(transaction.date).getDate())).size
-          : transactions.length;
-        const remainingCount = Math.max(1, countTarget - usedCount);
-        const remainingUnits = isCountMode ? remainingCount : remainingDays;
-
-        const dailyAvailable =
-          !category.isFixed && remainingBudget > 0
-            ? Math.floor(remainingBudget / remainingUnits)
-            : 0;
-
-        // 8. 返信メッセージの生成
-        let responseMsg = `📝 【${category.name}】に ¥${amount.toLocaleString()} を記録しました！\n\n📁 カテゴリ今月残額: ¥${remainingBudget.toLocaleString()}\n`;
-
-        if (!category.isFixed) {
-          const unitLabel = isCountMode ? "1回" : "1日";
-          const remainingLabel = isCountMode ? "回" : "日";
-          responseMsg += `🗓️ 今日以降${unitLabel}使える額: ¥${dailyAvailable.toLocaleString()} /${unitLabel} (残り${remainingUnits}${remainingLabel})`;
-        }
-
-        // 予算オーバー時の処理分岐
-        if (remainingBudget < 0) {
-          const overAmount = Math.abs(remainingBudget);
-          const mode = user.overBudgetMode || "COMPENSATE";
-
-          if (mode === "COMPENSATE") {
-            let candidateText = "";
-            for (const otherCat of user.categories) {
-              if (otherCat.id === category.id) continue;
-              const bData = await prisma.monthlyBudget.findFirst({
-                where: {
-                  categoryId: otherCat.id,
-                  yearMonth: currentYearMonth,
-                },
-              });
-              const bTrans = await prisma.transaction.findMany({
-                where: {
-                  categoryId: otherCat.id,
-                  type: "EXPENSE",
-                  date: {
-                    gte: new Date(today.getFullYear(), today.getMonth(), 1),
-                    lt: new Date(today.getFullYear(), today.getMonth() + 1, 1),
-                  },
-                },
-              });
-              const rem = (bData?.amount ?? 0) - bTrans.reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
-              if (rem > 0) {
-                candidateText += `\n・${otherCat.name} (残額: ¥${rem.toLocaleString()})`;
-              }
-            }
-
-            responseMsg += `\n\n🚨 予算が ¥${overAmount.toLocaleString()} 不足しています！\n以下のカテゴリから補填を検討してください:${candidateText || "\n(補填可能な余剰カテゴリがありません)"}`;
-          } else {
-            responseMsg += `\n\n⚠️ 【警告】予算超過中！(¥${overAmount.toLocaleString()} マイナス)`;
-          }
-        }
-
-        await replyLine(replyToken, responseMsg);
     }
 
     return NextResponse.json({ status: "success" });
@@ -354,6 +64,309 @@ export async function POST(req: Request) {
     console.error("LINE Webhook Error:", error);
     return NextResponse.json({ status: "error" }, { status: 500 });
   }
+}
+
+async function handleEvent(rawEvent: unknown): Promise<void> {
+  if (!isRecord(rawEvent)) {
+    console.error("Invalid LINE webhook event");
+    return;
+  }
+  const event = rawEvent;
+  if (event.type !== "message") return;
+  if (!isRecord(event.message)) {
+    console.error("Invalid LINE webhook message");
+    return;
+  }
+  if (typeof event.replyToken !== "string") {
+    console.error("Invalid LINE message reply token");
+    return;
+  }
+
+  const replyToken = event.replyToken;
+  const message = event.message;
+  const source = event.source;
+  const lineUserId = isRecord(source) ? source.userId : undefined;
+
+  if (typeof lineUserId !== "string" || !lineUserId) {
+    await replyLine(replyToken, "LINEユーザーを識別できませんでした。個別トークでお試しください。");
+    return;
+  }
+
+  const isTextMessage = message.type === "text";
+  const text = isTextMessage && typeof message.text === "string"
+    ? message.text.trim()
+    : null;
+
+  if (text !== null && /^\d{6}$/.test(text)) {
+    const linkResult = await linkLineAccount(text, lineUserId);
+    const responseMessage =
+      linkResult === "linked"
+        ? "アカウントの連携が完了しました！以降は入力した金額が家計簿に反映されます。"
+        : linkResult === "already-linked"
+          ? "このLINEアカウントは別の家計簿アカウントと連携済みです。"
+          : "無効なコード、または期限切れです。Web画面から再発行してください。";
+    await replyLine(replyToken, responseMessage);
+    return;
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { lineId: lineUserId },
+    include: {
+      categories: true,
+      accounts: true,
+    },
+  });
+
+  if (!user) {
+    await replyLine(
+      replyToken,
+      "家計簿への記録にはアカウント連携が必要です。Web画面でユーザー登録・ログインし、表示されたワンタイム認証コードをLINEボット宛に送信してください。認証コードの有効期限は5分です。",
+    );
+    return;
+  }
+
+  if (text === null) {
+    await replyLine(replyToken, getMessageFormatPrompt(user.categories.map((category) => category.name)));
+    return;
+  }
+
+  if (text === "カテゴリ追加" || text.startsWith("カテゴリ追加 ")) {
+    const categoryCommand = text.match(/^カテゴリ追加\s+(.+?)\s+(固定費|変動費)(?:\s+(\d+))?$/);
+    if (!categoryCommand) {
+      await replyLine(
+        replyToken,
+        "カテゴリ追加の形式が正しくありません。\n変動費: カテゴリ追加 名前 変動費\n固定費: カテゴリ追加 名前 固定費 月額予算\n例: カテゴリ追加 通信費 固定費 8000",
+      );
+      return;
+    }
+
+    const categoryName = categoryCommand[1].trim();
+    const isFixed = categoryCommand[2] === "固定費";
+    const monthlyBudget = categoryCommand[3] === undefined
+      ? NaN
+      : Number(categoryCommand[3]);
+
+    if (
+      !categoryName ||
+      categoryName.length > 40 ||
+      (isFixed && !isValidAmount(monthlyBudget)) ||
+      (!isFixed && categoryCommand[3] !== undefined)
+    ) {
+      await replyLine(
+        replyToken,
+        "カテゴリ名は1〜40文字、固定費の月額予算は1円以上で指定してください。変動費には予算を指定しません。",
+      );
+      return;
+    }
+
+    const existingCategory = user.categories.find(
+      (category) => category.name.toLowerCase() === categoryName.toLowerCase(),
+    );
+    if (existingCategory) {
+      await replyLine(replyToken, `「${existingCategory.name}」はすでに登録されています。`);
+      return;
+    }
+
+    const currentYearMonth = getJstYearMonth();
+    await prisma.$transaction(async (tx) => {
+      const category = await tx.category.create({
+        data: {
+          userId: user.id,
+          name: categoryName,
+          isFixed,
+        },
+      });
+      if (isFixed) {
+        await tx.monthlyBudget.create({
+          data: {
+            userId: user.id,
+            categoryId: category.id,
+            yearMonth: currentYearMonth,
+            amount: monthlyBudget,
+          },
+        });
+      }
+    });
+
+    await replyLine(
+      replyToken,
+      `カテゴリ「${categoryName}」（${isFixed ? `固定費・月額 ¥${monthlyBudget.toLocaleString()}` : "変動費"}）を追加しました。`,
+    );
+    return;
+  }
+
+  // 1. テキスト解析 (例: "食費 1200", "収入 50000")
+  const parts = text.split(/\s+/);
+  let categoryName = "";
+  let amount = 0;
+
+  if (parts.length === 2 && isValidAmount(Number(parts[1]))) {
+    categoryName = parts[0];
+    amount = Number(parts[1]);
+  } else if (parts.length === 1 && isValidAmount(Number(parts[0]))) {
+    categoryName = "食費";
+    amount = Number(parts[0]);
+  } else {
+    await replyLine(replyToken, getMessageFormatPrompt(user.categories.map((category) => category.name)));
+    return;
+  }
+
+  const currentYearMonth = getJstYearMonth();
+  const monthRange = getJstMonthRange();
+
+  // 3. 収入キーワードの判定 (収入、給料、入金、ボーナス、手当)
+  //    「副収入」など同じ名前のカテゴリが登録されている場合はそのカテゴリへの支出として扱う
+  const incomeKeywords = ["収入", "給料", "入金", "ボーナス", "手当"];
+  const hasSameNameCategory = user.categories.some(
+    (c) => c.name.toLowerCase() === categoryName.toLowerCase(),
+  );
+  const isIncome =
+    categoryName === "収入" ||
+    (!hasSameNameCategory && incomeKeywords.some((keyword) => categoryName.includes(keyword)));
+
+  if (isIncome) {
+    const currentIncome = await prisma.monthlyIncome.findFirst({
+      where: {
+        userId: user.id,
+        yearMonth: currentYearMonth,
+      },
+    });
+    if ((currentIncome?.amount ?? 0) + amount > MAX_AMOUNT) {
+      await replyLine(replyToken, "今月の収入の合計が上限を超えるため追加できませんでした。");
+      return;
+    }
+
+    // 同時に送信されても加算が失われないよう increment で更新する
+    const updatedIncome = await prisma.monthlyIncome.upsert({
+      where: {
+        userId_yearMonth: { userId: user.id, yearMonth: currentYearMonth },
+      },
+      update: { amount: { increment: amount } },
+      create: {
+        userId: user.id,
+        yearMonth: currentYearMonth,
+        amount,
+      },
+    });
+    const newTotal = updatedIncome.amount;
+
+    const responseMsg = `💰 今月の収入に ¥${amount.toLocaleString()} を追加しました！\n\n今月の総収入: ¥${newTotal.toLocaleString()}`;
+    await replyLine(replyToken, responseMsg);
+    return;
+  }
+
+  // 5. カテゴリの検索 (▼ c: { name: string } 型定義を追加 ▼)
+  const category = user.categories.find(
+    (c: { name: string }) => c.name.toLowerCase() === categoryName.toLowerCase()
+  );
+
+  if (!category) {
+    await replyLine(
+      replyToken,
+      `「${categoryName}」は登録されていません。\n${getMessageFormatPrompt(user.categories.map((item) => item.name))}`,
+    );
+    return;
+  }
+
+  // 4. 口座の確認
+  let account = user.accounts[0];
+  if (!account) {
+    account = await prisma.account.create({
+      data: { userId: user.id, name: "現金（財布）" },
+    });
+  }
+
+  // 6. 支出データ (Transaction) の記録
+  await prisma.transaction.create({
+    data: {
+      userId: user.id,
+      accountId: account.id,
+      categoryId: category.id,
+      type: "EXPENSE",
+      amount: amount,
+      memo: "LINEクイック登録",
+    },
+  });
+
+  // 7. 今月の残額 & 1日/1回あたりの残枠計算
+  const remainingDays = getJstRemainingDaysInMonth();
+
+  const budgetData = await prisma.monthlyBudget.findFirst({
+    where: {
+      categoryId: category.id,
+      yearMonth: currentYearMonth,
+    },
+  });
+
+  const catBudget = budgetData?.amount ?? 0;
+
+  const transactions = await prisma.transaction.findMany({
+    where: {
+      categoryId: category.id,
+      type: "EXPENSE",
+      date: monthRange,
+    },
+  });
+
+  const catExpense = transactions.reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
+  const remainingBudget = catBudget - catExpense;
+  const isCountMode = category.countType !== "DAILY" && category.countType !== "DAY";
+  const countTarget = category.countValue > 0 ? category.countValue : 1;
+  const usedCount = category.mergeSameDay
+    ? new Set(transactions.map((transaction) => getJstDayOfMonth(new Date(transaction.date)))).size
+    : transactions.length;
+  const remainingCount = Math.max(1, countTarget - usedCount);
+  const remainingUnits = isCountMode ? remainingCount : remainingDays;
+
+  const dailyAvailable =
+    !category.isFixed && remainingBudget > 0
+      ? Math.floor(remainingBudget / remainingUnits)
+      : 0;
+
+  // 8. 返信メッセージの生成
+  let responseMsg = `📝 【${category.name}】に ¥${amount.toLocaleString()} を記録しました！\n\n📁 カテゴリ今月残額: ¥${remainingBudget.toLocaleString()}\n`;
+
+  if (!category.isFixed) {
+    const unitLabel = isCountMode ? "1回" : "1日";
+    const remainingLabel = isCountMode ? "回" : "日";
+    responseMsg += `🗓️ 今日以降${unitLabel}使える額: ¥${dailyAvailable.toLocaleString()} /${unitLabel} (残り${remainingUnits}${remainingLabel})`;
+  }
+
+  // 予算オーバー時の処理分岐
+  if (remainingBudget < 0) {
+    const overAmount = Math.abs(remainingBudget);
+    const mode = user.overBudgetMode || "COMPENSATE";
+
+    if (mode === "COMPENSATE") {
+      let candidateText = "";
+      for (const otherCat of user.categories) {
+        if (otherCat.id === category.id) continue;
+        const bData = await prisma.monthlyBudget.findFirst({
+          where: {
+            categoryId: otherCat.id,
+            yearMonth: currentYearMonth,
+          },
+        });
+        const bTrans = await prisma.transaction.findMany({
+          where: {
+            categoryId: otherCat.id,
+            type: "EXPENSE",
+            date: monthRange,
+          },
+        });
+        const rem = (bData?.amount ?? 0) - bTrans.reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
+        if (rem > 0) {
+          candidateText += `\n・${otherCat.name} (残額: ¥${rem.toLocaleString()})`;
+        }
+      }
+
+      responseMsg += `\n\n🚨 予算が ¥${overAmount.toLocaleString()} 不足しています！\n以下のカテゴリから補填を検討してください:${candidateText || "\n(補填可能な余剰カテゴリがありません)"}`;
+    } else {
+      responseMsg += `\n\n⚠️ 【警告】予算超過中！(¥${overAmount.toLocaleString()} マイナス)`;
+    }
+  }
+
+  await replyLine(replyToken, responseMsg);
 }
 
 function isValidLineSignature(body: string, signature: string | null): boolean {

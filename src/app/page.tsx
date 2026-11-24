@@ -10,6 +10,13 @@ import CategorySettingsButton from "@/components/CategorySettingsButton";
 import CreateCategoryForm from "@/components/CreateCategoryForm";
 import LineLinkOtp from "@/components/LineLinkOtp";
 import type { Prisma } from "@prisma/client";
+import { ensureAppUser } from "@/lib/app-user";
+import {
+  getJstDayOfMonth,
+  getJstMonthRange,
+  getJstRemainingDaysInMonth,
+  getJstYearMonth,
+} from "@/lib/date-jst";
 
 const getCategoryIcon = (name: string) => {
   if (name.includes("食")) return "🍔";
@@ -20,7 +27,7 @@ const getCategoryIcon = (name: string) => {
   return "🍎";
 };
 
-function getDashboardUserInclude(yearMonth: string, today: Date) {
+function getDashboardUserInclude(yearMonth: string) {
   return {
     accounts: true,
     incomes: { where: { yearMonth } },
@@ -30,10 +37,7 @@ function getDashboardUserInclude(yearMonth: string, today: Date) {
         transactions: {
           where: {
             type: "EXPENSE",
-            date: {
-              gte: new Date(today.getFullYear(), today.getMonth(), 1),
-              lt: new Date(today.getFullYear(), today.getMonth() + 1, 1),
-            },
+            date: getJstMonthRange(),
           },
         },
       },
@@ -63,15 +67,26 @@ export default async function Home() {
     );
   }
 
-  const today = new Date();
-  const currentYearMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-  const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-  const remainingDays = Math.max(1, lastDayOfMonth - today.getDate() + 1);
+  const currentYearMonth = getJstYearMonth();
+  const remainingDays = getJstRemainingDaysInMonth();
 
-  const userData: DashboardUserData | null = await prisma.user.findUnique({
-    where: { id: user.id },
-    include: getDashboardUserInclude(currentYearMonth, today),
-  });
+  const loadUserData = (): Promise<DashboardUserData | null> =>
+    prisma.user.findUnique({
+      where: { id: user.id },
+      include: getDashboardUserInclude(currentYearMonth),
+    });
+
+  let userData = await loadUserData();
+
+  // サインアップ時に家計簿データの作成に失敗していた場合はここで作り直す
+  if (!userData && user.email) {
+    try {
+      await ensureAppUser(user.id, user.email);
+      userData = await loadUserData();
+    } catch (e) {
+      console.error("Prismaユーザー再作成エラー:", e);
+    }
+  }
 
   if (!userData) return <div>データの読み込みに失敗しました。</div>;
 
@@ -226,7 +241,7 @@ export default async function Home() {
               
               // 同日まとめ設定がONなら利用した「日」の数をカウント、OFFなら単純な決済件数
               const usedCount = category.mergeSameDay 
-                ? new Set(category.transactions.map(t => new Date(t.date).getDate())).size 
+                ? new Set(category.transactions.map(t => getJstDayOfMonth(new Date(t.date)))).size 
                 : category.transactions.length;
               
               // 残りの目標回数（最小1回）

@@ -4,7 +4,35 @@
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getFormDataString } from "@/lib/form-data";
+import { isValidAmount } from "@/lib/amount";
+import {
+  getJstMonthRangeFromYearMonth,
+  getJstYearMonth,
+  isValidYearMonth,
+} from "@/lib/date-jst";
 import { revalidatePath } from "next/cache";
+
+// 自分のカテゴリかを確認したうえで、その月の予算に amount を加算します。
+// 読み込み→書き込みの間に別リクエストが入っても加算が失われないよう increment を使います。
+async function addToCategoryBudget(
+  userId: string,
+  categoryId: string,
+  yearMonth: string,
+  amount: number,
+) {
+  const category = await prisma.category.findFirst({
+    where: { id: categoryId, userId },
+    select: { id: true },
+  });
+  if (!category) return false;
+
+  await prisma.monthlyBudget.upsert({
+    where: { categoryId_yearMonth: { categoryId, yearMonth } },
+    update: { amount: { increment: amount } },
+    create: { userId, categoryId, yearMonth, amount },
+  });
+  return true;
+}
 
 type ResolveInput = {
   categoryId?: unknown;
@@ -56,10 +84,10 @@ export async function resolveDeficit(
   }
 
   // 年月が空の場合は当月を自動設定
-  const today = new Date();
   if (!yearMonth) {
-    yearMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+    yearMonth = getJstYearMonth();
   }
+  if (!isValidYearMonth(yearMonth)) return;
 
   if (!categoryId || typeof categoryId !== "string") {
     return;
@@ -72,12 +100,10 @@ export async function resolveDeficit(
     });
     const transactions = await prisma.transaction.findMany({
       where: {
+        userId: user.id,
         categoryId,
         type: "EXPENSE",
-        date: {
-          gte: new Date(today.getFullYear(), today.getMonth(), 1),
-          lt: new Date(today.getFullYear(), today.getMonth() + 1, 1),
-        },
+        date: getJstMonthRangeFromYearMonth(yearMonth),
       },
     });
     // ▼ sum と t の両方に型を指定してエラーを回避 ▼
@@ -88,27 +114,9 @@ export async function resolveDeficit(
     }
   }
 
-  if (amountToCover <= 0) return;
+  if (!isValidAmount(amountToCover)) return;
 
-  const currentBudget = await prisma.monthlyBudget.findFirst({
-    where: { userId: user.id, categoryId, yearMonth },
-  });
-
-  if (currentBudget) {
-    await prisma.monthlyBudget.update({
-      where: { id: currentBudget.id },
-      data: { amount: currentBudget.amount + amountToCover },
-    });
-  } else {
-    await prisma.monthlyBudget.create({
-      data: {
-        userId: user.id,
-        categoryId,
-        yearMonth,
-        amount: amountToCover,
-      },
-    });
-  }
+  if (!(await addToCategoryBudget(user.id, categoryId, yearMonth, amountToCover))) return;
 
   revalidatePath("/");
 }
@@ -152,34 +160,16 @@ export async function quickAllocate(
     amountToAdd = arg3;
   }
 
-  const today = new Date();
   if (!yearMonth) {
-    yearMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+    yearMonth = getJstYearMonth();
   }
+  if (!isValidYearMonth(yearMonth)) return;
 
-  if (!categoryId || typeof categoryId !== "string" || !amountToAdd || amountToAdd <= 0) {
+  if (!categoryId || typeof categoryId !== "string" || !isValidAmount(amountToAdd)) {
     return;
   }
 
-  const currentBudget = await prisma.monthlyBudget.findFirst({
-    where: { userId: user.id, categoryId, yearMonth },
-  });
-
-  if (currentBudget) {
-    await prisma.monthlyBudget.update({
-      where: { id: currentBudget.id },
-      data: { amount: currentBudget.amount + amountToAdd },
-    });
-  } else {
-    await prisma.monthlyBudget.create({
-      data: {
-        userId: user.id,
-        categoryId,
-        yearMonth,
-        amount: amountToAdd,
-      },
-    });
-  }
+  if (!(await addToCategoryBudget(user.id, categoryId, yearMonth, amountToAdd))) return;
 
   revalidatePath("/");
 }

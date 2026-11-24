@@ -9,10 +9,8 @@ import { revalidatePath } from "next/cache";
 export async function updateOverBudgetMode(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  
-  // ログインユーザーがいない場合は DB の先頭ユーザーを取得（検証用）
-  const targetUserId = user?.id || (await prisma.user.findFirst())?.id;
-  if (!targetUserId) return;
+  if (!user) return;
+  const targetUserId = user.id;
 
   const mode = getFormDataString(formData, "overBudgetMode");
   if (mode !== "COMPENSATE" && mode !== "WARNING") return;

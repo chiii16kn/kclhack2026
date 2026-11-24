@@ -10,16 +10,19 @@ declare global {
 // Next.jsの再読み込みで重複してDB接続が作られないようグローバル領域に保持します
 const globalForPrisma = globalThis;
 
-// ① PostgreSQL への接続プール（通信の口）を作成します
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+function createPrismaClient() {
+  // ① PostgreSQL への接続プール（通信の口）を作成します
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
-// ② Prisma 7 で必須となった PostgreSQL 用のアダプターを作成します
-const adapter = new PrismaPg(pool);
+  // ② Prisma 7 で必須となった PostgreSQL 用のアダプターを作成します
+  const adapter = new PrismaPg(pool);
 
-// ③ PrismaClient のコンストラクタに adapter を渡して初期化します
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({ adapter });
+  // ③ PrismaClient のコンストラクタに adapter を渡して初期化します
+  return new PrismaClient({ adapter });
+}
+
+// 既存のクライアントがあれば再利用し、不要な接続プールを作らないようにします
+export const prisma = globalForPrisma.prisma ?? createPrismaClient();
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 

@@ -4,6 +4,8 @@
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getFormDataString } from "@/lib/form-data";
+import { isValidAmount } from "@/lib/amount";
+import { getJstYearMonth } from "@/lib/date-jst";
 import { revalidatePath } from "next/cache";
 
 export type CreateCategoryState = {
@@ -38,7 +40,7 @@ export async function createCategory(
 
   const isFixed = expenseType === "FIXED";
   const amount = amountValue === null || amountValue === "" ? NaN : Number(amountValue);
-  if (isFixed && (!Number.isSafeInteger(amount) || amount <= 0 || amount > 2_147_483_647)) {
+  if (isFixed && !isValidAmount(amount)) {
     return { success: false, message: "固定費の月額予算を1円以上で入力してください。" };
   }
 
@@ -50,8 +52,7 @@ export async function createCategory(
     return { success: false, message: "同じ名前のカテゴリがすでにあります。" };
   }
 
-  const today = new Date();
-  const yearMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+  const yearMonth = getJstYearMonth();
 
   await prisma.$transaction(async (tx) => {
     const category = await tx.category.create({
@@ -88,7 +89,9 @@ export async function updateCategorySettings(formData: FormData) {
   const countValue = Number(formData.get("countValue"));
   const mergeSameDay = formData.get("mergeSameDay") === "true";
 
-  if (!categoryId || !countType || isNaN(countValue)) return;
+  if (!categoryId) return;
+  if (countType !== "DAILY" && countType !== "MONTHLY_COUNT") return;
+  if (!Number.isSafeInteger(countValue) || countValue < 1 || countValue > 1000) return;
 
   await prisma.category.update({
     where: { id: categoryId, userId: user.id },
