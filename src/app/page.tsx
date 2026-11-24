@@ -9,9 +9,11 @@ import ActionRequiredModal from "@/components/ActionRequiredModal";
 import CategorySettingsButton from "@/components/CategorySettingsButton";
 import CreateCategoryForm from "@/components/CreateCategoryForm";
 import LineLinkOtp from "@/components/LineLinkOtp";
+import DeleteTransactionButton from "@/components/DeleteTransactionButton";
 import type { Prisma } from "@prisma/client";
 import { ensureAppUser } from "@/lib/app-user";
 import {
+  getJstDateParts,
   getJstDayOfMonth,
   getJstMonthRange,
   getJstRemainingDaysInMonth,
@@ -120,6 +122,11 @@ export default async function Home() {
 
   // モーダルを表示するかどうかの判定
   const needsAction = unallocatedAmount > 0 || overCategories.length > 0;
+
+  // 今月の支出一覧（新しい順）
+  const monthlyTransactions = userData.categories
+    .flatMap((cat) => cat.transactions.map((t) => ({ ...t, categoryName: cat.name })))
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   // モーダル用に追加：全カテゴリの簡易リスト
   const allCategories = userData.categories.map(c => ({ id: c.id, name: c.name }));
@@ -300,6 +307,35 @@ export default async function Home() {
               );
             })}
           </div>
+        </section>
+
+        {/* 今月の支出一覧（間違えた記録の削除用） */}
+        <section className="bg-white p-6 rounded-3xl shadow-sm border-2 border-gray-100 space-y-3">
+          <h2 className="text-lg font-extrabold text-gray-700 flex items-center gap-2">
+            <span>🧾</span> 今月の支出
+          </h2>
+          {monthlyTransactions.length === 0 ? (
+            <p className="text-sm font-bold text-gray-400">まだ支出の記録がありません。</p>
+          ) : (
+            <ul className="divide-y divide-gray-100">
+              {monthlyTransactions.map((t) => {
+                const { month, day } = getJstDateParts(new Date(t.date));
+                const dateLabel = `${month}/${day}`;
+                return (
+                  <li key={t.id} className="flex items-center gap-3 py-2 text-sm">
+                    <span className="w-12 text-xs font-bold text-gray-400">{dateLabel}</span>
+                    <span className="font-bold text-gray-700">{getCategoryIcon(t.categoryName)} {t.categoryName}</span>
+                    <span className="flex-1 truncate text-xs text-gray-400">{t.memo}</span>
+                    <span className="font-extrabold text-gray-800">¥{t.amount.toLocaleString()}</span>
+                    <DeleteTransactionButton
+                      transactionId={t.id}
+                      label={`${dateLabel} ${t.categoryName} ¥${t.amount.toLocaleString()}`}
+                    />
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </section>
       </div>
     </main>

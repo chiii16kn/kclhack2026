@@ -52,3 +52,20 @@ export async function addTransaction(formData: FormData) {
   // 画面を再読み込みして最新の残高を反映
   revalidatePath("/");
 }
+
+// 間違えて登録した支出を削除する
+export async function deleteTransaction(formData: FormData) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const transactionId = getFormDataString(formData, "transactionId");
+  if (!transactionId) return;
+
+  // 自分の支出だけを削除できるよう userId も条件に含める
+  await prisma.transaction.deleteMany({
+    where: { id: transactionId, userId: user.id },
+  });
+
+  revalidatePath("/");
+}

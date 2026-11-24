@@ -51,6 +51,8 @@ model Account {
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   name         String
   transactions Transaction[]
+
+  @@index([userId])
 }
 
 // ④ カテゴリモデル（袋）
@@ -69,6 +71,8 @@ model Category {
   user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   budgets      MonthlyBudget[]
   transactions Transaction[]
+
+  @@unique([userId, name]) // 同じユーザー内でカテゴリ名の重複を防ぐ
 }
 
 // ⑤ 月次予算モデル（各カテゴリへの割り当て額）
@@ -96,5 +100,9 @@ model Transaction {
   accountId  String
   account    Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
   categoryId String?
-  category   Category? @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  // カテゴリを削除しても支出履歴は残す（categoryId が null になる）
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  @@index([userId, date])
+  @@index([categoryId, date])
 }

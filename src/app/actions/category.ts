@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getFormDataString } from "@/lib/form-data";
 import { isValidAmount } from "@/lib/amount";
 import { getJstYearMonth } from "@/lib/date-jst";
+import { isUniqueConstraintError } from "@/lib/prisma-errors";
 import { revalidatePath } from "next/cache";
 
 export type CreateCategoryState = {
@@ -54,26 +55,33 @@ export async function createCategory(
 
   const yearMonth = getJstYearMonth();
 
-  await prisma.$transaction(async (tx) => {
-    const category = await tx.category.create({
-      data: {
-        userId: user.id,
-        name,
-        isFixed,
-      },
-    });
-
-    if (isFixed) {
-      await tx.monthlyBudget.create({
+  try {
+    await prisma.$transaction(async (tx) => {
+      const category = await tx.category.create({
         data: {
           userId: user.id,
-          categoryId: category.id,
-          yearMonth,
-          amount,
+          name,
+          isFixed,
         },
       });
+
+      if (isFixed) {
+        await tx.monthlyBudget.create({
+          data: {
+            userId: user.id,
+            categoryId: category.id,
+            yearMonth,
+            amount,
+          },
+        });
+      }
+    });
+  } catch (error: unknown) {
+    if (isUniqueConstraintError(error)) {
+      return { success: false, message: "同じ名前のカテゴリがすでにあります。" };
     }
-  });
+    throw error;
+  }
 
   revalidatePath("/");
   return { success: true, message: `「${name}」を追加しました。` };

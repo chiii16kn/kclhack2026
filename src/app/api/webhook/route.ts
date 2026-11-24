@@ -3,7 +3,9 @@ import { NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { isValidAmount, MAX_AMOUNT } from "@/lib/amount";
+import { isUniqueConstraintError } from "@/lib/prisma-errors";
 import {
+  getJstDateParts,
   getJstDayOfMonth,
   getJstMonthRange,
   getJstRemainingDaysInMonth,
@@ -18,6 +20,8 @@ function isUnknownArray(value: unknown): value is unknown[] {
   return Array.isArray(value);
 }
 
+const UNDO_COMMANDS = ["取り消し", "取消", "取り消す", "とりけし"];
+
 function getMessageFormatPrompt(categoryNames: string[]): string {
   const availableCategories = ["収入", ...new Set(categoryNames.filter((name) => name !== "収入"))];
 
@@ -29,6 +33,7 @@ function getMessageFormatPrompt(categoryNames: string[]): string {
     "【カテゴリ追加】「カテゴリ追加 名前 変動費」または「カテゴリ追加 名前 固定費 月額予算」",
     "例: カテゴリ追加 通信費 固定費 8000",
     "金額だけを送ると食費として登録します。",
+    "【取り消し】「取り消し」と送ると直前の支出を削除します。",
   ].join("\n");
 }
 
@@ -130,6 +135,34 @@ async function handleEvent(rawEvent: unknown): Promise<void> {
     return;
   }
 
+  // 直前の支出を取り消す
+  if (UNDO_COMMANDS.includes(text)) {
+    const latest = await prisma.transaction.findFirst({
+      where: { userId: user.id, type: "EXPENSE" },
+      orderBy: { date: "desc" },
+      include: { category: { select: { name: true } } },
+    });
+    if (!latest) {
+      await replyLine(replyToken, "取り消せる支出がありません。");
+      return;
+    }
+
+    const deleted = await prisma.transaction.deleteMany({
+      where: { id: latest.id, userId: user.id },
+    });
+    if (deleted.count !== 1) {
+      await replyLine(replyToken, "取り消しに失敗しました。もう一度お試しください。");
+      return;
+    }
+
+    const { month, day } = getJstDateParts(latest.date);
+    await replyLine(
+      replyToken,
+      `🗑️ 直前の支出を取り消しました。\n${month}/${day} 【${latest.category?.name ?? "カテゴリなし"}】 ¥${latest.amount.toLocaleString()}\n\n※収入の取り消しは、Web画面で今月の収入額を修正してください。`,
+    );
+    return;
+  }
+
   if (text === "カテゴリ追加" || text.startsWith("カテゴリ追加 ")) {
     const categoryCommand = text.match(/^カテゴリ追加\s+(.+?)\s+(固定費|変動費)(?:\s+(\d+))?$/);
     if (!categoryCommand) {
@@ -168,25 +201,33 @@ async function handleEvent(rawEvent: unknown): Promise<void> {
     }
 
     const currentYearMonth = getJstYearMonth();
-    await prisma.$transaction(async (tx) => {
-      const category = await tx.category.create({
-        data: {
-          userId: user.id,
-          name: categoryName,
-          isFixed,
-        },
-      });
-      if (isFixed) {
-        await tx.monthlyBudget.create({
+    try {
+      await prisma.$transaction(async (tx) => {
+        const category = await tx.category.create({
           data: {
             userId: user.id,
-            categoryId: category.id,
-            yearMonth: currentYearMonth,
-            amount: monthlyBudget,
+            name: categoryName,
+            isFixed,
           },
         });
+        if (isFixed) {
+          await tx.monthlyBudget.create({
+            data: {
+              userId: user.id,
+              categoryId: category.id,
+              yearMonth: currentYearMonth,
+              amount: monthlyBudget,
+            },
+          });
+        }
+      });
+    } catch (error: unknown) {
+      if (isUniqueConstraintError(error)) {
+        await replyLine(replyToken, `「${categoryName}」はすでに登録されています。`);
+        return;
       }
-    });
+      throw error;
+    }
 
     await replyLine(
       replyToken,
