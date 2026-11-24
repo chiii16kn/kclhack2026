@@ -22,3 +22,20 @@ export async function updateOverBudgetMode(formData: FormData) {
 
   revalidatePath("/");
 }
+
+// 毎晩21時のLINE通知のオン・オフを切り替える
+export async function updateDailyReminder(formData: FormData) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const value = getFormDataString(formData, "dailyReminderEnabled");
+  if (value !== "true" && value !== "false") return;
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { dailyReminderEnabled: value === "true" },
+  });
+
+  revalidatePath("/");
+}

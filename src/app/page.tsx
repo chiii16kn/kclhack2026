@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import { updateMonthlyIncome, updateCategoryBudget } from "@/app/actions/budget";
-import { updateOverBudgetMode } from "@/app/actions/user";
+import { updateDailyReminder, updateOverBudgetMode } from "@/app/actions/user";
 import { addTransaction } from "@/app/actions/transaction";
 import ActionRequiredModal from "@/components/ActionRequiredModal";
 import CategorySettingsButton from "@/components/CategorySettingsButton";
@@ -176,6 +176,23 @@ export default async function Home() {
               </button>
             </form>
           </div>
+
+          {userData.lineId && (
+            <div className="flex justify-between items-center bg-orange-50/50 p-3 rounded-2xl text-sm">
+              <div>
+                <span className="font-semibold text-gray-600">毎晩21時のLINE通知: </span>
+                <span className="ml-2 font-bold text-orange-600">
+                  {userData.dailyReminderEnabled ? "🔔 オン" : "🔕 オフ"}
+                </span>
+              </div>
+              <form action={updateDailyReminder}>
+                <input type="hidden" name="dailyReminderEnabled" value={userData.dailyReminderEnabled ? "false" : "true"} />
+                <button type="submit" className="px-3 py-1.5 bg-white border-2 border-orange-200 text-orange-600 hover:bg-orange-100 rounded-full text-xs font-bold transition-transform active:scale-95">
+                  {userData.dailyReminderEnabled ? "オフにする" : "オンにする"}
+                </button>
+              </form>
+            </div>
+          )}
 
           <form action={updateMonthlyIncome} className="flex items-center gap-3 bg-[#FFFBFE] p-4 rounded-2xl border border-orange-50">
             {/* ▼ 手動保存が効かない原因だったパラメータを追加 ▼ */}

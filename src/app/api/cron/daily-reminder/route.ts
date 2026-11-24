@@ -46,7 +46,8 @@ export async function GET(request: Request) {
   const dayStart = new Date(Date.UTC(year, month - 1, day) - JST_OFFSET_MS);
   const nextDayStart = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
   const users = await prisma.user.findMany({
-    where: { lineId: { not: null } },
+    // LINE連携済みで、通知をオンにしているユーザーだけに送る
+    where: { lineId: { not: null }, dailyReminderEnabled: true },
     select: { id: true, lineId: true },
   });
   const expenses = users.length
