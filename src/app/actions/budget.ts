@@ -4,7 +4,7 @@
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getFormDataString } from "@/lib/form-data";
-import { isValidAmount } from "@/lib/amount";
+import { isValidAmount, MAX_AMOUNT } from "@/lib/amount";
 import { isValidYearMonth } from "@/lib/date-jst";
 import { revalidatePath } from "next/cache";
 
@@ -33,6 +33,34 @@ export async function updateMonthlyIncome(formData: FormData) {
       yearMonth,
       amount,
     },
+  });
+
+  revalidatePath("/");
+}
+
+// ①' 今月の収入に入力した額を追加するアクション（今の合計額に足し算する）
+export async function addMonthlyIncome(formData: FormData) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const yearMonth = getFormDataString(formData, "yearMonth");
+  const amount = Number(formData.get("amount"));
+
+  if (!isValidYearMonth(yearMonth)) return;
+  if (!isValidAmount(amount)) return;
+
+  const current = await prisma.monthlyIncome.findUnique({
+    where: { userId_yearMonth: { userId: user.id, yearMonth } },
+    select: { amount: true },
+  });
+  if ((current?.amount ?? 0) + amount > MAX_AMOUNT) return;
+
+  // 同時に追加されても加算が失われないよう increment で更新する
+  await prisma.monthlyIncome.upsert({
+    where: { userId_yearMonth: { userId: user.id, yearMonth } },
+    update: { amount: { increment: amount } },
+    create: { userId: user.id, yearMonth, amount },
   });
 
   revalidatePath("/");

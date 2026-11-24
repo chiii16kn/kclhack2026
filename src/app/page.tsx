@@ -2,7 +2,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
-import { updateMonthlyIncome, updateCategoryBudget } from "@/app/actions/budget";
+import { addMonthlyIncome, updateMonthlyIncome, updateCategoryBudget } from "@/app/actions/budget";
 import { updateDailyReminder, updateOverBudgetMode } from "@/app/actions/user";
 import { addTransaction } from "@/app/actions/transaction";
 import ActionRequiredModal from "@/components/ActionRequiredModal";
@@ -202,6 +202,17 @@ export default async function Home() {
             <input key={totalIncome} type="number" name="amount" defaultValue={totalIncome} placeholder="250000" className="flex-1 max-w-[160px] px-4 py-2 border-2 border-orange-100 rounded-full text-right font-bold focus:outline-none focus:border-orange-300" />
             <button type="submit" className="px-5 py-2 bg-orange-500 text-white rounded-full text-sm font-bold hover:bg-orange-600 transition-transform active:scale-95 shadow-sm">
               保存
+            </button>
+          </form>
+
+          {/* 収入の追加（入力した額を今の合計に足す） */}
+          <form action={addMonthlyIncome} className="flex items-center gap-3 bg-[#FFFBFE] p-4 rounded-2xl border border-orange-50">
+            <input type="hidden" name="yearMonth" value={currentYearMonth} />
+
+            <label className="text-sm font-bold text-gray-600 whitespace-nowrap">収入を追加する：</label>
+            <input type="number" name="amount" min="1" step="1" placeholder="50000" required className="flex-1 max-w-[160px] px-4 py-2 border-2 border-orange-100 rounded-full text-right font-bold focus:outline-none focus:border-orange-300" />
+            <button type="submit" className="px-5 py-2 bg-teal-500 text-white rounded-full text-sm font-bold hover:bg-teal-600 transition-transform active:scale-95 shadow-sm">
+              ＋ 追加
             </button>
           </form>
           
