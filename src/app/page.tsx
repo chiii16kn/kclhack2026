@@ -148,83 +148,87 @@ export default async function Home() {
         <LineLinkOtp isLinked={Boolean(userData.lineId)} />
 
         {/* ヘッダー & 未配分プール */}
-        <div className="bg-white p-6 rounded-3xl shadow-sm border-2 border-orange-100 space-y-5">
-          <div className="flex justify-between items-center">
-            <h1 className="text-2xl font-extrabold text-orange-500 flex items-center gap-2">
+        <div className="bg-white p-4 sm:p-6 rounded-3xl shadow-sm border-2 border-orange-100 space-y-5">
+          <div className="flex flex-wrap justify-between items-center gap-2">
+            <h1 className="text-2xl font-extrabold text-orange-500 flex items-center gap-2 whitespace-nowrap">
               <span>🐻</span><span>Pocke</span> <span className="text-sm font-medium text-gray-400 ml-2">{currentYearMonth}</span>
             </h1>
             {unallocatedAmount === 0 && totalIncome > 0 ? (
-              <span className="bg-green-100 text-green-700 text-sm font-bold px-4 py-1.5 rounded-full">✨ ぜんぶ配分できたよ！</span>
+              <span className="bg-green-100 text-green-700 text-sm font-bold px-4 py-1.5 rounded-full whitespace-nowrap">✨ ぜんぶ配分できたよ！</span>
             ) : unallocatedAmount < 0 ? (
-              <span className="bg-red-100 text-red-700 text-sm font-bold px-4 py-1.5 rounded-full shadow-sm">⚠️ {Math.abs(unallocatedAmount).toLocaleString()}円 オーバー！</span>
+              <span className="bg-red-100 text-red-700 text-sm font-bold px-4 py-1.5 rounded-full shadow-sm whitespace-nowrap">⚠️ {Math.abs(unallocatedAmount).toLocaleString()}円 オーバー！</span>
             ) : (
-              <span className="bg-yellow-100 text-yellow-700 text-sm font-bold px-4 py-1.5 rounded-full shadow-sm">未配分: ¥{unallocatedAmount.toLocaleString()}</span>
+              <span className="bg-yellow-100 text-yellow-700 text-sm font-bold px-4 py-1.5 rounded-full shadow-sm whitespace-nowrap">未配分: ¥{unallocatedAmount.toLocaleString()}</span>
             )}
           </div>
 
-          <div className="flex justify-between items-center bg-orange-50/50 p-3 rounded-2xl text-sm">
-            <div>
+          <div className="flex justify-between items-center gap-3 bg-orange-50/50 p-3 rounded-2xl text-sm">
+            <div className="min-w-0 flex flex-col sm:flex-row sm:items-center sm:gap-2">
               <span className="font-semibold text-gray-600">予算オーバー時のルール: </span>
-              <span className="ml-2 font-bold text-orange-600">
+              <span className="font-bold text-orange-600">
                 {currentMode === "COMPENSATE" ? "🔄 補填（他からカバー）" : "⚠️ マイナス強調（警告のみ）"}
               </span>
             </div>
             <form action={updateOverBudgetMode}>
               <input type="hidden" name="overBudgetMode" value={currentMode === "COMPENSATE" ? "WARNING" : "COMPENSATE"} />
-              <button type="submit" className="px-3 py-1.5 bg-white border-2 border-orange-200 text-orange-600 hover:bg-orange-100 rounded-full text-xs font-bold transition-transform active:scale-95">
+              <button type="submit" className="px-3 py-1.5 bg-white border-2 border-orange-200 text-orange-600 hover:bg-orange-100 rounded-full text-xs font-bold transition-transform active:scale-95 shrink-0 whitespace-nowrap">
                 変更する
               </button>
             </form>
           </div>
 
           {userData.lineId && (
-            <div className="flex justify-between items-center bg-orange-50/50 p-3 rounded-2xl text-sm">
-              <div>
+            <div className="flex justify-between items-center gap-3 bg-orange-50/50 p-3 rounded-2xl text-sm">
+              <div className="min-w-0 flex flex-col sm:flex-row sm:items-center sm:gap-2">
                 <span className="font-semibold text-gray-600">毎晩21時のLINE通知: </span>
-                <span className="ml-2 font-bold text-orange-600">
+                <span className="font-bold text-orange-600">
                   {userData.dailyReminderEnabled ? "🔔 オン" : "🔕 オフ"}
                 </span>
               </div>
               <form action={updateDailyReminder}>
                 <input type="hidden" name="dailyReminderEnabled" value={userData.dailyReminderEnabled ? "false" : "true"} />
-                <button type="submit" className="px-3 py-1.5 bg-white border-2 border-orange-200 text-orange-600 hover:bg-orange-100 rounded-full text-xs font-bold transition-transform active:scale-95">
+                <button type="submit" className="px-3 py-1.5 bg-white border-2 border-orange-200 text-orange-600 hover:bg-orange-100 rounded-full text-xs font-bold transition-transform active:scale-95 shrink-0 whitespace-nowrap">
                   {userData.dailyReminderEnabled ? "オフにする" : "オンにする"}
                 </button>
               </form>
             </div>
           )}
 
-          <form action={updateMonthlyIncome} className="flex items-center gap-3 bg-[#FFFBFE] p-4 rounded-2xl border border-orange-50">
+          <form action={updateMonthlyIncome} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 bg-[#FFFBFE] p-4 rounded-2xl border border-orange-50">
             {/* ▼ 手動保存が効かない原因だったパラメータを追加 ▼ */}
             <input type="hidden" name="yearMonth" value={currentYearMonth} />
             
-            <label className="text-sm font-bold text-gray-600 whitespace-nowrap">今月使えるお金（収入）：</label>
-            <input key={totalIncome} type="number" name="amount" defaultValue={totalIncome} placeholder="250000" className="flex-1 max-w-[160px] px-4 py-2 border-2 border-orange-100 rounded-full text-right font-bold focus:outline-none focus:border-orange-300" />
-            <button type="submit" className="px-5 py-2 bg-orange-500 text-white rounded-full text-sm font-bold hover:bg-orange-600 transition-transform active:scale-95 shadow-sm">
-              保存
-            </button>
+            <label className="text-sm font-bold text-gray-600 sm:whitespace-nowrap">今月使えるお金（収入）：</label>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <input key={totalIncome} type="number" inputMode="numeric" name="amount" defaultValue={totalIncome} placeholder="250000" className="flex-1 min-w-0 sm:max-w-[160px] px-4 py-2 border-2 border-orange-100 rounded-full text-right font-bold focus:outline-none focus:border-orange-300" />
+              <button type="submit" className="shrink-0 whitespace-nowrap px-5 py-2 bg-orange-500 text-white rounded-full text-sm font-bold hover:bg-orange-600 transition-transform active:scale-95 shadow-sm">
+                保存
+              </button>
+            </div>
           </form>
 
           {/* 収入の追加（入力した額を今の合計に足す） */}
-          <form action={addMonthlyIncome} className="flex items-center gap-3 bg-[#FFFBFE] p-4 rounded-2xl border border-orange-50">
+          <form action={addMonthlyIncome} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 bg-[#FFFBFE] p-4 rounded-2xl border border-orange-50">
             <input type="hidden" name="yearMonth" value={currentYearMonth} />
 
-            <label className="text-sm font-bold text-gray-600 whitespace-nowrap">収入を追加する：</label>
-            <input type="number" name="amount" min="1" step="1" placeholder="50000" required className="flex-1 max-w-[160px] px-4 py-2 border-2 border-orange-100 rounded-full text-right font-bold focus:outline-none focus:border-orange-300" />
-            <button type="submit" className="px-5 py-2 bg-teal-500 text-white rounded-full text-sm font-bold hover:bg-teal-600 transition-transform active:scale-95 shadow-sm">
-              ＋ 追加
-            </button>
+            <label className="text-sm font-bold text-gray-600 sm:whitespace-nowrap">収入を追加する：</label>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <input type="number" inputMode="numeric" name="amount" min="1" step="1" placeholder="50000" required className="flex-1 min-w-0 sm:max-w-[160px] px-4 py-2 border-2 border-orange-100 rounded-full text-right font-bold focus:outline-none focus:border-orange-300" />
+              <button type="submit" className="shrink-0 whitespace-nowrap px-5 py-2 bg-teal-500 text-white rounded-full text-sm font-bold hover:bg-teal-600 transition-transform active:scale-95 shadow-sm">
+                ＋ 追加
+              </button>
+            </div>
           </form>
           
-          <div className="grid grid-cols-3 gap-4 pt-4 text-center border-t border-gray-100">
-            <div><p className="text-xs font-bold text-gray-400 mb-1">配分した合計</p><p className="text-lg font-extrabold text-gray-700">¥{totalAllocated.toLocaleString()}</p></div>
-            <div><p className="text-xs font-bold text-gray-400 mb-1">使ったお金</p><p className="text-lg font-extrabold text-rose-500">¥{totalExpense.toLocaleString()}</p></div>
-            <div><p className="text-xs font-bold text-gray-400 mb-1">ぜんぶの残金</p><p className="text-lg font-extrabold text-teal-500">¥{(totalIncome - totalExpense).toLocaleString()}</p></div>
+          <div className="grid grid-cols-3 gap-2 sm:gap-4 pt-4 text-center border-t border-gray-100">
+            <div><p className="text-xs font-bold text-gray-400 mb-1">配分した合計</p><p className="text-base sm:text-lg font-extrabold text-gray-700">¥{totalAllocated.toLocaleString()}</p></div>
+            <div><p className="text-xs font-bold text-gray-400 mb-1">使ったお金</p><p className="text-base sm:text-lg font-extrabold text-rose-500">¥{totalExpense.toLocaleString()}</p></div>
+            <div><p className="text-xs font-bold text-gray-400 mb-1">ぜんぶの残金</p><p className="text-base sm:text-lg font-extrabold text-teal-500">¥{(totalIncome - totalExpense).toLocaleString()}</p></div>
           </div>
         </div>
 
         {/* 手動支出登録フォーム */}
-        <section className="bg-white p-6 rounded-3xl shadow-sm border-2 border-blue-50 space-y-4 relative overflow-hidden">
+        <section className="bg-white p-4 sm:p-6 rounded-3xl shadow-sm border-2 border-blue-50 space-y-4 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-20 h-20 bg-blue-50 rounded-bl-full -z-10 opacity-50"></div>
           <h2 className="text-lg font-extrabold text-blue-600 flex items-center gap-2">
             <span>✍️</span> 支出をメモする
@@ -232,24 +236,24 @@ export default async function Home() {
           <form action={addTransaction} className="flex flex-wrap gap-3 items-end">
             <div className="flex flex-col gap-1 flex-1 min-w-[140px]">
               <label className="text-xs font-bold text-gray-500">どの袋？</label>
-              <select name="categoryId" className="px-4 py-2.5 border-2 border-gray-100 rounded-full text-sm bg-gray-50 focus:bg-white focus:outline-none focus:border-blue-200">
+              <select name="categoryId" className="w-full px-4 py-2.5 border-2 border-gray-100 rounded-full text-sm bg-gray-50 focus:bg-white focus:outline-none focus:border-blue-200">
                 <option value="">選んでね</option>
                 {userData.categories.map((cat) => (
                   <option key={cat.id} value={cat.id}>{getCategoryIcon(cat.name)} {cat.name}</option>
                 ))}
               </select>
             </div>
-            <div className="flex flex-col gap-1 w-32">
+            <div className="flex flex-col gap-1 w-full sm:w-32">
               <label className="text-xs font-bold text-gray-500">いくら？</label>
               <div className="flex items-center gap-1">
-                <input type="number" name="amount" placeholder="1000" className="w-full px-4 py-2.5 border-2 border-gray-100 rounded-full text-sm text-right bg-gray-50 focus:bg-white focus:outline-none focus:border-blue-200" />
+                <input type="number" inputMode="numeric" name="amount" placeholder="1000" className="w-full px-4 py-2.5 border-2 border-gray-100 rounded-full text-sm text-right bg-gray-50 focus:bg-white focus:outline-none focus:border-blue-200" />
               </div>
             </div>
             <div className="flex flex-col gap-1 flex-1 min-w-[140px]">
               <label className="text-xs font-bold text-gray-500">メモ（任意）</label>
               <input type="text" name="memo" placeholder="スーパー" className="w-full px-4 py-2.5 border-2 border-gray-100 rounded-full text-sm bg-gray-50 focus:bg-white focus:outline-none focus:border-blue-200" />
             </div>
-            <button type="submit" className="px-6 py-2.5 bg-blue-500 text-white rounded-full text-sm font-bold hover:bg-blue-600 transition-transform active:scale-95 shadow-sm">
+            <button type="submit" className="w-full sm:w-auto whitespace-nowrap px-6 py-2.5 bg-blue-500 text-white rounded-full text-sm font-bold hover:bg-blue-600 transition-transform active:scale-95 shadow-sm">
               記録！
             </button>
           </form>
@@ -257,9 +261,9 @@ export default async function Home() {
 
         {/* カテゴリ（袋）別 予算配分 */}
         <section className="space-y-4">
-          <div className="flex justify-between items-end px-2">
+          <div className="flex flex-wrap justify-between items-end gap-2 px-2">
             <h2 className="text-xl font-extrabold text-gray-700">👜 わたしの袋</h2>
-            <span className="text-sm font-bold text-teal-600 bg-teal-50 px-3 py-1 rounded-full">月末まであと {remainingDays} 日</span>
+            <span className="text-sm font-bold text-teal-600 bg-teal-50 px-3 py-1 rounded-full whitespace-nowrap">月末まであと {remainingDays} 日</span>
           </div>
 
           <CreateCategoryForm />
@@ -282,12 +286,12 @@ export default async function Home() {
 
               return (
                 <div key={category.id} className={`p-5 rounded-3xl shadow-sm border-2 ${isOver ? 'bg-rose-50 border-rose-100' : 'bg-white border-gray-100'} space-y-3 relative overflow-hidden`}>
-                  <div className="flex justify-between items-start">
+                  <div className="flex justify-between items-start gap-3">
                     
-                    <div className="flex flex-col">
-                      <div className="flex items-center gap-2 mb-1">
+                    <div className="flex flex-col min-w-0">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1">
                         <span className="text-2xl">{getCategoryIcon(category.name)}</span>
-                        <span className="font-extrabold text-lg text-gray-800">{category.name}</span>
+                        <span className="font-extrabold text-lg text-gray-800 break-all">{category.name}</span>
                         {category.isFixed && <span className="text-[10px] bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full font-bold">固定費</span>}
                         <CategorySettingsButton category={category} />
                       </div>
@@ -296,11 +300,11 @@ export default async function Home() {
                       </span>
                     </div>
                     
-                    <form action={updateCategoryBudget} className="flex flex-col items-end gap-1">
+                    <form action={updateCategoryBudget} className="flex flex-col items-end gap-1 shrink-0">
                       <input type="hidden" name="categoryId" value={category.id} />
                       <input type="hidden" name="yearMonth" value={currentYearMonth} />
                       <div className="flex items-center gap-1">
-                        <input type="number" name="amount" defaultValue={budget} className="w-20 px-2 py-1 border-2 border-gray-100 rounded-lg text-right text-sm font-bold bg-gray-50 focus:bg-white focus:outline-none focus:border-blue-200" />
+                        <input type="number" inputMode="numeric" name="amount" defaultValue={budget} className="w-24 px-2 py-1 border-2 border-gray-100 rounded-lg text-right text-sm font-bold bg-gray-50 focus:bg-white focus:outline-none focus:border-blue-200" />
                         <span className="text-xs font-bold text-gray-400">円</span>
                       </div>
                       <button type="submit" className="px-3 py-1 bg-gray-800 text-white rounded-full text-xs font-bold hover:bg-gray-700 transition-transform active:scale-95">配分</button>
@@ -311,7 +315,7 @@ export default async function Home() {
                     <div className={`h-2.5 rounded-full transition-all duration-500 ${isOver ? 'bg-rose-500' : 'bg-teal-400'}`} style={{ width: `${expensePercent}%` }}></div>
                   </div>
                   
-                  <div className="flex justify-between items-center text-xs font-bold pt-2">
+                  <div className="flex flex-wrap justify-between items-center gap-2 text-xs font-bold pt-2">
                     <span className="text-gray-400">消化: ¥{expense.toLocaleString()}</span>
                     {!category.isFixed && (
                       <span className="bg-white text-teal-600 px-3 py-1 rounded-full shadow-sm border border-teal-100">
@@ -326,7 +330,7 @@ export default async function Home() {
         </section>
 
         {/* 今月の支出一覧（間違えた記録の削除用） */}
-        <section className="bg-white p-6 rounded-3xl shadow-sm border-2 border-gray-100 space-y-3">
+        <section className="bg-white p-4 sm:p-6 rounded-3xl shadow-sm border-2 border-gray-100 space-y-3">
           <h2 className="text-lg font-extrabold text-gray-700 flex items-center gap-2">
             <span>🧾</span> 今月の支出
           </h2>
@@ -338,11 +342,11 @@ export default async function Home() {
                 const { month, day } = getJstDateParts(new Date(t.date));
                 const dateLabel = `${month}/${day}`;
                 return (
-                  <li key={t.id} className="flex items-center gap-3 py-2 text-sm">
-                    <span className="w-12 text-xs font-bold text-gray-400">{dateLabel}</span>
-                    <span className="font-bold text-gray-700">{getCategoryIcon(t.categoryName)} {t.categoryName}</span>
-                    <span className="flex-1 truncate text-xs text-gray-400">{t.memo}</span>
-                    <span className="font-extrabold text-gray-800">¥{t.amount.toLocaleString()}</span>
+                  <li key={t.id} className="flex items-center gap-2 sm:gap-3 py-2 text-sm">
+                    <span className="w-10 shrink-0 text-xs font-bold text-gray-400">{dateLabel}</span>
+                    <span className="shrink-0 font-bold text-gray-700 whitespace-nowrap">{getCategoryIcon(t.categoryName)} {t.categoryName}</span>
+                    <span className="flex-1 min-w-0 truncate text-xs text-gray-400">{t.memo}</span>
+                    <span className="shrink-0 font-extrabold text-gray-800 whitespace-nowrap">¥{t.amount.toLocaleString()}</span>
                     <DeleteTransactionButton
                       transactionId={t.id}
                       label={`${dateLabel} ${t.categoryName} ¥${t.amount.toLocaleString()}`}

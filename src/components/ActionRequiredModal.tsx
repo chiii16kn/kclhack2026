@@ -40,7 +40,7 @@ export default function ActionRequiredModal({
 
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-[#FFFBF0] rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border-2 border-orange-100 animate-in fade-in zoom-in duration-200">
+      <div className="bg-[#FFFBF0] rounded-3xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto border-2 border-orange-100 animate-in fade-in zoom-in duration-200">
         <div className="bg-orange-400 p-4 text-white flex justify-between items-center">
           <h2 className="font-extrabold flex items-center gap-2 text-lg">
             <span>⚠️</span> お金の整理が必要です
@@ -102,7 +102,7 @@ export default function ActionRequiredModal({
               }} className="flex flex-col gap-2">
                 <input type="hidden" name="yearMonth" value={currentYearMonth} />
                 <div className="flex gap-2">
-                  <select name="categoryId" className="flex-1 px-3 py-2.5 border-2 border-gray-100 rounded-xl text-sm bg-gray-50 font-bold focus:outline-none focus:border-orange-200" required>
+                  <select name="categoryId" className="flex-1 min-w-0 px-3 py-2.5 border-2 border-gray-100 rounded-xl text-sm bg-gray-50 font-bold focus:outline-none focus:border-orange-200" required>
                     <option value="">どの袋に入れる？</option>
                     {allCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
