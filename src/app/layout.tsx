@@ -1,5 +1,7 @@
 // src/app/layout.tsx
 import type { Metadata } from "next";
+import Image from "next/image";
+import Link from "next/link";
 import "./globals.css";
 import { AuthStatus } from "@/components/containers/AuthStatus"; // 残しておいた認証UIコンポーネント
 
@@ -18,7 +20,9 @@ export default function RootLayout({
       <body className="bg-gray-50 text-gray-900 min-h-screen">
         {/* 全画面共通のヘッダー */}
         <header className="flex justify-between items-center px-6 py-4 bg-white border-b shadow-sm">
-          <div className="text-xl font-bold text-blue-600">Pocke</div>
+          <Link href="/" aria-label="Pocke ホームへ">
+            <Image src="/logo.png" alt="Pocke" width={416} height={160} priority className="h-10 w-auto" />
+          </Link>
           {/* ここにログイン・ログアウトボタンを配置 */}
           <AuthStatus />
         </header>
