@@ -253,15 +253,28 @@ LINE DevelopersでMessaging APIのWebhook URLを、公開Webサイトの`https:/
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabaseクライアントの公開可能キー。サーバー秘密鍵やDBパスワードとは異なる |
 | `LINE_CHANNEL_ACCESS_TOKEN` | サーバーからLINE Messaging APIへ返信・Push通知するときに使う秘密トークン |
 | `LINE_CHANNEL_SECRET` | LINE Webhook署名の検証に使う秘密値 |
-| `CRON_SECRET` | 日次リマインダーAPIをVercel Cronから呼び出すための秘密値 |
+| `CRON_SECRET` | 日次リマインダーAPIを外部cronサービスから呼び出すための秘密値。長いランダム値にする |
 
 LINEのWebhook URLには、公開済み環境の`https://<ドメイン>/api/webhook`を設定します。LINEからそのURLへ到達できる必要があります。プレビュー環境に認証ゲートがかかっているとLINEがWebhookに到達できないため、Webhookを公開URLから利用可能にしてください。
 
 ## 日次のLINEリマインダー
 
-[`vercel.json`](./vercel.json)で毎日12:00 UTC（日本時間21:00）に[`src/app/api/cron/daily-reminder/route.ts`](./src/app/api/cron/daily-reminder/route.ts)を呼び出します。Vercelの本番環境に`CRON_SECRET`と`LINE_CHANNEL_ACCESS_TOKEN`を設定してください。LINE連携済みのユーザーへ当日の支出合計と件数を送り、支出記録がない場合も入力忘れがないか確認するメッセージを送ります。日付の集計は日本時間です。
+外部のcronサービス（cron-job.orgなど）から、毎日日本時間21:00に[`src/app/api/cron/daily-reminder/route.ts`](./src/app/api/cron/daily-reminder/route.ts)を呼び出します。LINE連携済みで通知をオンにしているユーザーへ当日の支出合計と件数を送り、支出記録がない場合も入力忘れがないか確認するメッセージを送ります。日付の集計は日本時間です。
 
-Vercel以外で運用する場合は、毎日日本時間21:00に同APIを`Authorization: Bearer <CRON_SECRET>`ヘッダー付きで呼び出すスケジューラーを設定してください。
+Vercel Cronを使わない理由：Vercelの無料（Hobby）プランではCronの実行時刻が1時間単位でしか保証されず、21:00を指定しても21:00〜21:59のどこかで実行されるためです。
+
+外部cronサービスには次のように設定します。
+
+| 項目 | 設定値 |
+|---|---|
+| URL | `https://<本番ドメイン>/api/cron/daily-reminder` |
+| メソッド | `GET` |
+| 実行時刻 | 毎日21:00（タイムゾーン：Asia/Tokyo） |
+| リクエストヘッダー | `Authorization: Bearer <CRON_SECRET>` |
+| 失敗時のリトライ | オフ（このAPIは送信済みかを記録していないため、リトライすると通知が二重に届く） |
+| タイムアウト | 30秒程度（コールドスタートで数秒かかることがある） |
+
+Vercelの本番環境にも`CRON_SECRET`と`LINE_CHANNEL_ACCESS_TOKEN`を設定してください。`CRON_SECRET`が漏れると誰でも全ユーザーに通知を送れてしまうため、漏えいが疑われるときはVercelと外部cronサービスの両方で値を差し替えてください。
 
 ## 9. 開発・DB更新・確認
 
